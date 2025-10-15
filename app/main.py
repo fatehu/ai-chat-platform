@@ -6,12 +6,18 @@ import httpx
 import os
 import json
 from datetime import datetime
+from dotenv import load_dotenv
+
+# 导入 RAG 路由和服务
+from app.routes.rag_routes import router as rag_router
+from app.services.rag_service import get_rag_service
+
+# 加载环境变量
+load_dotenv()
 
 # ----------------------------------------------------------------------
 # 核心配置：模型映射
 # ----------------------------------------------------------------------
-# 这是一个查找表，用于根据模型名称动态获取配置。
-# 注意：确保你的 docker-compose.yml 传递了这些环境变量！
 MODEL_CONFIGS = {
     # OpenAI 模型配置
     "gpt-3.5-turbo": {
@@ -39,9 +45,9 @@ MODEL_CONFIGS = {
 
 
 app = FastAPI(
-    title="AI Chat Platform API",
-    description="核心对话API服务",
-    version="1.0.0"
+    title="AI Chat Platform API with RAG",
+    description="核心对话API服务（支持RAG）",
+    version="2.0.0"
 )
 
 # CORS配置
@@ -53,14 +59,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 请求模型
+# 注册 RAG 路由
+app.include_router(rag_router)
+
+# ============================================================
+# Pydantic 模型
+# ============================================================
+
 class Message(BaseModel):
     role: str
     content: str
 
 class ChatRequest(BaseModel):
     messages: List[Message]
-    # 将默认模型改为 None，要求用户明确指定，以避免混淆
     model: str = "gpt-3.5-turbo" 
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = 1000
@@ -72,18 +83,41 @@ class ChatResponse(BaseModel):
     vendor: str
     timestamp: str
 
-# 健康检查接口
+class RAGChatRequest(BaseModel):
+    """RAG 聊天请求"""
+    kb_name: str  # 知识库名称
+    query: str  # 用户问题
+    model: str = "gpt-3.5-turbo"
+    temperature: Optional[float] = 0.7
+    max_tokens: Optional[int] = 1000
+    top_k: Optional[int] = 3  # 检索文档数量
+
+class RAGChatResponse(BaseModel):
+    """RAG 聊天响应"""
+    answer: str
+    model: str
+    kb_name: str
+    source_documents: List[Dict[str, Any]]
+    usage: Dict[str, Any]
+    vendor: str
+    timestamp: str
+
+# ============================================================
+# API 端点
+# ============================================================
+
 @app.get("/health")
 async def health_check():
     """健康检查接口"""
     return {
         "status": "healthy",
-        "service": "ai-chat-api",
+        "service": "ai-chat-api-with-rag",
         "timestamp": datetime.utcnow().isoformat(),
-        "version": "1.0.0"
+        "version": "2.0.0",
+        "features": ["chat", "rag"]
     }
 
-# 核心对话接口
+
 @app.post("/api/v1/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """
@@ -132,7 +166,6 @@ async def chat(request: ChatRequest):
             
             # 4. 错误处理
             if response.status_code != 200:
-                # 打印详细错误信息到控制台，便于调试
                 print(f"[{vendor} API Error {response.status_code}]: {response.text}")
                 raise HTTPException(
                     status_code=response.status_code,
@@ -144,7 +177,7 @@ async def chat(request: ChatRequest):
             
             return ChatResponse(
                 message=result["choices"][0]["message"]["content"],
-                model=result.get("model", model_name), # 使用响应中的模型名，如果不存在则用请求的模型名
+                model=result.get("model", model_name),
                 usage=result.get("usage", {}),
                 vendor=vendor,
                 timestamp=datetime.utcnow().isoformat()
@@ -161,17 +194,89 @@ async def chat(request: ChatRequest):
             detail=f"处理请求时发生未知错误: {str(e)}"
         )
 
-# 根路径
+
+@app.post("/api/v1/rag-chat", response_model=RAGChatResponse)
+async def rag_chat(request: RAGChatRequest):
+    """
+    RAG 聊天接口：结合知识库检索和 LLM 生成答案
+    
+    流程：
+    1. 从知识库检索相关文档
+    2. 构建带上下文的提示词
+    3. 调用 LLM 生成答案
+    """
+    
+    try:
+        # 1. RAG 查询：检索相关文档
+        rag_service = get_rag_service()
+        rag_result = rag_service.rag_query(
+            kb_name=request.kb_name,
+            query=request.query,
+            top_k=request.top_k
+        )
+        
+        context = rag_result["context"]
+        source_documents = rag_result["source_documents"]
+        
+        # 2. 构建提示词
+        system_prompt = """你是一个智能助手。请根据提供的参考文档回答用户的问题。
+如果参考文档中没有相关信息，请明确告知用户。
+请始终基于参考文档的内容进行回答，不要编造信息。"""
+        
+        user_prompt = f"""参考文档：
+{context}
+
+用户问题：{request.query}
+
+请基于上述参考文档回答用户的问题。"""
+        
+        # 3. 调用 LLM
+        chat_request = ChatRequest(
+            messages=[
+                Message(role="system", content=system_prompt),
+                Message(role="user", content=user_prompt)
+            ],
+            model=request.model,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens
+        )
+        
+        chat_response = await chat(chat_request)
+        
+        # 4. 返回结果
+        return RAGChatResponse(
+            answer=chat_response.message,
+            model=chat_response.model,
+            kb_name=request.kb_name,
+            source_documents=source_documents,
+            usage=chat_response.usage,
+            vendor=chat_response.vendor,
+            timestamp=chat_response.timestamp
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"RAG 聊天失败: {str(e)}"
+        )
+
+
 @app.get("/")
 async def root():
     """根路径欢迎信息"""
     return {
-        "message": "欢迎使用AI聊天平台API",
+        "message": "欢迎使用AI聊天平台API (支持RAG)",
+        "version": "2.0.0",
         "supported_models": list(MODEL_CONFIGS.keys()),
-        "docs": "/docs",
-        "health": "/health",
-        "chat_endpoint": "/api/v1/chat"
+        "endpoints": {
+            "docs": "/docs",
+            "health": "/health",
+            "chat": "/api/v1/chat",
+            "rag_chat": "/api/v1/rag-chat",
+            "rag_api": "/api/v1/rag"
+        }
     }
+
 
 if __name__ == "__main__":
     import uvicorn
