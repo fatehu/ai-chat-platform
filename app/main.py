@@ -12,6 +12,9 @@ from dotenv import load_dotenv
 from app.routes.rag_routes import router as rag_router
 from app.services.rag_service import get_rag_service
 
+# 导入 Agent 路由
+from app.routes.agent_routes import router as agent_router
+
 # 加载环境变量
 load_dotenv()
 
@@ -61,6 +64,9 @@ app.add_middleware(
 
 # 注册 RAG 路由
 app.include_router(rag_router)
+
+# 注册 Agent 路由
+app.include_router(agent_router)
 
 # ============================================================
 # Pydantic 模型
@@ -274,7 +280,13 @@ async def root():
             "chat": "/api/v1/chat",
             "rag_chat": "/api/v1/rag-chat",
             "rag_api": "/api/v1/rag"
-        }
+        },
+        "features": [
+            "对话聊天 (/api/v1/chat)",
+            "RAG检索增强 (/api/v1/rag-chat)",
+            "智能Agent (/api/v1/agent/query)",
+            # ... 其他特性
+        ],
     }
 
 
