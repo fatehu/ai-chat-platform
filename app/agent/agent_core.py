@@ -46,7 +46,7 @@ class AgentStep(BaseModel):
 
 class AgentConfig(BaseModel):
     """Agent配置"""
-    max_iterations: int = 10  # 最大迭代次数
+    max_iterations: int = 100  # 最大迭代次数
     max_execution_time: int = 300  # 最大执行时间（秒）
     model: str = "deepseek-chat"  # 使用的LLM模型
     temperature: float = 0.7  # 温度参数

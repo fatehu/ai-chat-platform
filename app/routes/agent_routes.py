@@ -25,6 +25,19 @@ from ..agent.advanced_tools import (
     UnitConverterTool
 )
 
+from ..agent.extended_tools import (
+    FileReaderTool,
+    FileWriterTool,
+    CSVProcessorTool,
+    HTTPRequestTool,
+    DataConverterTool,
+    RandomGeneratorTool,
+    EncodingTool,
+    URLExtractorTool,
+    EmailValidatorTool,
+    DataStatisticsTool
+)
+
 from ..services.rag_service import get_rag_service
 from ..database.database import get_db
 from ..database.conversation_service import ConversationService
@@ -42,7 +55,7 @@ class AgentQueryRequest(BaseModel):
     query: str
     model: str = "deepseek-chat"
     temperature: float = 0.7
-    max_iterations: int = 10
+    max_iterations: int = 100
     verbose: bool = True
     enable_tools: Optional[List[str]] = None
     # 新增：RAG配置
@@ -133,20 +146,62 @@ MODEL_CONFIGS = {
 
 
 def get_available_tools() -> Dict[str, Any]:
-    """获取所有可用工具"""
+    """
+    获取所有可用工具
+    
+    工具分类：
+    - 基础工具 (5个): 计算、时间、代码执行、搜索、知识库
+    - 高级工具 (5个): 天气、文本分析、JSON解析、时间计算、单位转换
+    - 扩展工具 (11个): 文件操作、数据处理、网络请求、实用工具
+    
+    总计: 21个工具
+    """
     rag_service = get_rag_service()
     
     tools = {
+        # ============================================================
+        # 基础工具 (Basic Tools)
+        # ============================================================
         "calculator": CalculatorTool(),
         "get_current_time": DateTimeTool(),
         "python_repl": PythonREPLTool(),
         "web_search": WebSearchTool(),
         "knowledge_base_search": KnowledgeBaseTool(rag_service=rag_service),
+        
+        # ============================================================
+        # 高级工具 (Advanced Tools)
+        # ============================================================
         "get_weather": WeatherTool(),
         "analyze_text": TextAnalysisTool(),
         "parse_json": JSONParserTool(),
         "time_calculator": TimerTool(),
-        "convert_unit": UnitConverterTool()
+        "convert_unit": UnitConverterTool(),
+        
+        # ============================================================
+        # 扩展工具 - 文件操作 (Extended Tools - File Operations)
+        # ============================================================
+        "read_file": FileReaderTool(),
+        "write_file": FileWriterTool(),
+        "process_csv": CSVProcessorTool(),
+        
+        # ============================================================
+        # 扩展工具 - 数据处理 (Extended Tools - Data Processing)
+        # ============================================================
+        "convert_data_format": DataConverterTool(),
+        "calculate_statistics": DataStatisticsTool(),
+        "extract_urls": URLExtractorTool(),
+        
+        # ============================================================
+        # 扩展工具 - 网络工具 (Extended Tools - Network)
+        # ============================================================
+        "http_request": HTTPRequestTool(),
+        
+        # ============================================================
+        # 扩展工具 - 实用工具 (Extended Tools - Utilities)
+        # ============================================================
+        "generate_random": RandomGeneratorTool(),
+        "encode_decode": EncodingTool(),
+        "validate_email": EmailValidatorTool(),
     }
     
     return tools
@@ -460,17 +515,29 @@ async def agent_health():
     """Agent服务健康检查"""
     tools = get_available_tools()
     
+    # 统计各类工具数量
+    basic_tools = ["calculator", "get_current_time", "python_repl", "web_search", "knowledge_base_search"]
+    advanced_tools = ["get_weather", "analyze_text", "parse_json", "time_calculator", "convert_unit"]
+    extended_tools = [k for k in tools.keys() if k not in basic_tools and k not in advanced_tools]
+    
     return {
         "status": "healthy",
         "service": "agent",
-        "version": "2.0.0",
+        "version": "2.1.0",  # 版本号升级
         "features": [
             "stateless_query",
             "conversational_mode",
             "dynamic_rag",
             "function_calling",
-            "multi_tools"
+            "multi_tools",
+            "extended_tools"  # 新增特性
         ],
-        "available_tools": len(tools),
-        "tools": list(tools.keys())
+        "tool_statistics": {
+            "total": len(tools),
+            "basic": len([t for t in basic_tools if t in tools]),
+            "advanced": len([t for t in advanced_tools if t in tools]),
+            "extended": len(extended_tools)
+        },
+        "available_tools": list(tools.keys()),
+        "new_tools": extended_tools  # 显示新增工具
     }
