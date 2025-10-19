@@ -8,18 +8,24 @@ import json
 from datetime import datetime
 from dotenv import load_dotenv
 
-# 导入 RAG 路由和服务
+# 导入数据库
+from app.database.database import init_db
+
+# 导入RAG路由和服务
 from app.routes.rag_routes import router as rag_router
 from app.services.rag_service import get_rag_service
 
-# 导入 Agent 路由
+# 导入Agent路由
 from app.routes.agent_routes import router as agent_router
+
+# 导入会话路由
+from app.routes.conversation_routes import router as conversation_router
 
 # 加载环境变量
 load_dotenv()
 
 # ----------------------------------------------------------------------
-# 核心配置：模型映射
+# 核心配置:模型映射
 # ----------------------------------------------------------------------
 MODEL_CONFIGS = {
     # OpenAI 模型配置
@@ -48,9 +54,9 @@ MODEL_CONFIGS = {
 
 
 app = FastAPI(
-    title="AI Chat Platform API with RAG",
-    description="核心对话API服务（支持RAG）",
-    version="2.0.0"
+    title="AI Chat Platform API with Conversations & RAG",
+    description="核心对话API服务(支持会话管理、RAG、Agent)",
+    version="3.0.0"
 )
 
 # CORS配置
@@ -62,11 +68,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 注册 RAG 路由
+
+# ============================================================
+# 启动事件 - 初始化数据库
+# ============================================================
+
+@app.on_event("startup")
+async def startup_event():
+    """应用启动时初始化数据库"""
+    try:
+        init_db()
+        print("✅ 数据库初始化成功")
+    except Exception as e:
+        print(f"❌ 数据库初始化失败: {str(e)}")
+
+
+# ============================================================
+# 注册路由
+# ============================================================
+
+# 注册会话路由 (新增)
+app.include_router(conversation_router)
+
+# 注册RAG路由
 app.include_router(rag_router)
 
-# 注册 Agent 路由
+# 注册Agent路由
 app.include_router(agent_router)
+
 
 # ============================================================
 # Pydantic 模型
@@ -108,6 +137,7 @@ class RAGChatResponse(BaseModel):
     vendor: str
     timestamp: str
 
+
 # ============================================================
 # API 端点
 # ============================================================
@@ -117,17 +147,24 @@ async def health_check():
     """健康检查接口"""
     return {
         "status": "healthy",
-        "service": "ai-chat-api-with-rag",
+        "service": "ai-chat-api-with-conversations",
         "timestamp": datetime.utcnow().isoformat(),
-        "version": "2.0.0",
-        "features": ["chat", "rag"]
+        "version": "3.0.0",
+        "features": [
+            "chat",
+            "rag",
+            "agent",
+            "conversations",
+            "function_calling"
+        ]
     }
 
 
 @app.post("/api/v1/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """
-    核心对话接口：根据请求的模型动态选择 API 服务商和密钥。
+    核心对话接口:根据请求的模型动态选择 API 服务商和密钥。
+    (无状态对话,不保存历史)
     """
     
     # 1. 模型选择和配置获取
@@ -137,7 +174,7 @@ async def chat(request: ChatRequest):
     if not config:
         raise HTTPException(
             status_code=400,
-            detail=f"不支持的模型: {model_name}。请使用以下支持的模型：{list(MODEL_CONFIGS.keys())}"
+            detail=f"不支持的模型: {model_name}。请使用以下支持的模型:{list(MODEL_CONFIGS.keys())}"
         )
 
     api_key = config["api_key"]
@@ -204,16 +241,17 @@ async def chat(request: ChatRequest):
 @app.post("/api/v1/rag-chat", response_model=RAGChatResponse)
 async def rag_chat(request: RAGChatRequest):
     """
-    RAG 聊天接口：结合知识库检索和 LLM 生成答案
+    RAG 聊天接口:结合知识库检索和 LLM 生成答案
+    (无状态,不保存历史)
     
-    流程：
+    流程:
     1. 从知识库检索相关文档
     2. 构建带上下文的提示词
     3. 调用 LLM 生成答案
     """
     
     try:
-        # 1. RAG 查询：检索相关文档
+        # 1. RAG 查询:检索相关文档
         rag_service = get_rag_service()
         rag_result = rag_service.rag_query(
             kb_name=request.kb_name,
@@ -226,13 +264,13 @@ async def rag_chat(request: RAGChatRequest):
         
         # 2. 构建提示词
         system_prompt = """你是一个智能助手。请根据提供的参考文档回答用户的问题。
-如果参考文档中没有相关信息，请明确告知用户。
-请始终基于参考文档的内容进行回答，不要编造信息。"""
+如果参考文档中没有相关信息,请明确告知用户。
+请始终基于参考文档的内容进行回答,不要编造信息。"""
         
-        user_prompt = f"""参考文档：
+        user_prompt = f"""参考文档:
 {context}
 
-用户问题：{request.query}
+用户问题:{request.query}
 
 请基于上述参考文档回答用户的问题。"""
         
@@ -271,21 +309,26 @@ async def rag_chat(request: RAGChatRequest):
 async def root():
     """根路径欢迎信息"""
     return {
-        "message": "欢迎使用AI聊天平台API (支持RAG)",
-        "version": "2.0.0",
+        "message": "欢迎使用AI聊天平台API (支持会话管理、RAG、Agent)",
+        "version": "3.0.0",
         "supported_models": list(MODEL_CONFIGS.keys()),
         "endpoints": {
             "docs": "/docs",
             "health": "/health",
             "chat": "/api/v1/chat",
             "rag_chat": "/api/v1/rag-chat",
-            "rag_api": "/api/v1/rag"
+            "conversations": "/api/v1/conversations",
+            "rag_api": "/api/v1/rag",
+            "agent": "/api/v1/agent"
         },
         "features": [
-            "对话聊天 (/api/v1/chat)",
+            "无状态对话 (/api/v1/chat)",
             "RAG检索增强 (/api/v1/rag-chat)",
+            "多轮会话管理 (/api/v1/conversations)",
             "智能Agent (/api/v1/agent/query)",
-            # ... 其他特性
+            "Function Calling",
+            "会话隔离",
+            "数据库持久化"
         ],
     }
 

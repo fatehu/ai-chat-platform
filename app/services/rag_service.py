@@ -272,9 +272,16 @@ class RAGService:
             
             # 构建上下文
             context_parts = []
+            formatted_documents = [] # 用于存储格式化后的文档
             for i, result in enumerate(search_results["results"], 1):
                 context_parts.append(f"[文档{i}]\n{result['document']}\n")
             
+                # 将文档结构统一为 Agent 期望的结构
+                formatted_documents.append({
+                    "content": result['document'], # <--- **关键修改：将 'document' 映射到 'content'**
+                    "metadata": result.get('metadata', {}) # 包含元数据
+                })
+
             context = "\n".join(context_parts)
             
             return {
@@ -282,7 +289,8 @@ class RAGService:
                 "kb_name": kb_name,
                 "query": query,
                 "context": context,
-                "source_documents": search_results["results"],
+                # "source_documents": search_results["results"],
+                "source_documents": formatted_documents,
                 "count": search_results["count"]
             }
         except Exception as e:

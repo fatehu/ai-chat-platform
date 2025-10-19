@@ -1,4 +1,52 @@
 services:
+  # ===============================================
+  # PostgreSQL 数据库服务
+  # ===============================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: ai-chat-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ai_chat_db
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ===============================================
+  # ChromaDB 服务配置
+  # ===============================================
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: chroma-server
+    ports:
+      - "8002:8000"
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ALLOW_RESET=TRUE
+      - ANONYMIZED_TELEMETRY=False
+      - CHROMA_HOST=0.0.0.0
+      - CHROMA_PORT=8000
+    volumes:
+      - chroma-data:/chroma/chroma
+    healthcheck:
+      test: ["CMD", "/bin/bash", "-c", "cat < /dev/null > /dev/tcp/localhost/8000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # ===============================================
+  # API 服务配置
+  # ===============================================
   api:
     build:
       context: .
@@ -7,15 +55,29 @@ services:
     ports:
       - "8000:8000"
     environment:
+      # LLM API配置
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL}
-      # 提供嵌入服务
-      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY} 
+      
+      # 嵌入服务配置
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
       - DASHSCOPE_BASE_URL=${DASHSCOPE_BASE_URL}
+      
+      # 数据库配置
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ai_chat_db
+      
+      # ChromaDB配置
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
     volumes:
       - ./app:/app/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chroma:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -24,30 +86,11 @@ services:
       retries: 3
       start_period: 40s
 
-  # ===============================================
-  # ChromaDB 服务配置
-  # ===============================================
-  chroma:
-    image: chromadb/chroma:latest
-    container_name: chroma-server
-    # 将容器的 8000 端口映射到宿主机的 8001，避免与 api 服务的 8000 冲突
-    ports:
-      - "8002:8000" 
-    environment:
-      # 设置为 HTTP 模式
-      - IS_PERSISTENT=TRUE
-      - ALLOW_RESET=TRUE
-      - ANONYMIZED_TELEMETRY=False
-      - CHROMA_HOST=0.0.0.0
-      - CHROMA_PORT=8000
-    volumes:
-      # 挂载卷以持久化数据
-      - chroma-data:/chroma/chroma
-    restart: unless-stopped
-
 # ===============================================
 # 卷定义
 # ===============================================
 volumes:
+  postgres-data:
+    driver: local
   chroma-data:
     driver: local

@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI助手 - 多轮对话</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1000px;
+            width: 100%;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 80vh;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+        
+        .session-info {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+        
+        .chat-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f7f9fc;
+        }
+        
+        .message {
+            display: flex;
+            margin-bottom: 16px;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .message.user {
+            justify-content: flex-end;
+        }
+        
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            word-wrap: break-word;
+        }
+        
+        .message.user .message-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .message.assistant .message-content {
+            background: white;
+            color: #333;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .message.system .message-content {
+            background: #e3f2fd;
+            color: #1976d2;
+            font-size: 13px;
+            text-align: center;
+            max-width: 100%;
+        }
+        
+        .tool-info {
+            font-size: 12px;
+            margin-top: 8px;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 6px;
+            color: #666;
+        }
+        
+        .input-area {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .input-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        #messageInput {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 24px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        
+        #messageInput:focus {
+            border-color: #667eea;
+        }
+        
+        #sendButton {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 24px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        #sendButton:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        #sendButton:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .tool-chip {
+            padding: 6px 12px;
+            background: #f0f0f0;
+            border: 1px solid #d0d0d0;
+            border-radius: 16px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .tool-chip:hover {
+            background: #e0e0e0;
+        }
+        
+        .tool-chip.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        
+        .loading {
+            display: flex;
+            gap: 4px;
+            padding: 12px;
+        }
+        
+        .loading-dot {
+            width: 8px;
+            height: 8px;
+            background: #667eea;
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out;
+        }
+        
+        .loading-dot:nth-child(1) { animation-delay: -0.32s; }
+        .loading-dot:nth-child(2) { animation-delay: -0.16s; }
+        
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .control-button {
+            padding: 8px 16px;
+            background: #f0f0f0;
+            border: 1px solid #d0d0d0;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        
+        .control-button:hover {
+            background: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>🤖 AI智能助手</h1>
+                <div class="session-info" id="sessionInfo">正在初始化...</div>
+            </div>
+            <div class="controls">
+                <button class="control-button" onclick="newConversation()">新对话</button>
+                <button class="control-button" onclick="clearChat()">清空</button>
+            </div>
+        </div>
+        
+        <div class="chat-area" id="chatArea">
+            <div class="message system">
+                <div class="message-content">
+                    👋 你好!我是AI助手,可以帮你解答问题、执行计算、查询信息等。
+                </div>
+            </div>
+        </div>
+        
+        <div class="input-area">
+            <div class="toolbar" id="toolsBar">
+                <!-- 工具选择按钮将动态添加 -->
+            </div>
+            
+            <div class="input-container">
+                <input 
+                    type="text" 
+                    id="messageInput" 
+                    placeholder="输入消息..."
+                    onkeypress="handleKeyPress(event)"
+                />
+                <button id="sendButton" onclick="sendMessage()">发送</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000';
+        let currentSessionId = null;
+        let enabledTools = [];
+        
+        // 可用工具列表
+        const availableTools = [
+            { name: 'calculator', label: '🔢 计算器' },
+            { name: 'get_current_time', label: '⏰ 时间' },
+            { name: 'get_weather', label: '🌤️ 天气' },
+            { name: 'convert_unit', label: '📏 单位转换' },
+            { name: 'analyze_text', label: '📝 文本分析' },
+            { name: 'web_search', label: '🔍 搜索' }
+        ];
+        
+        // 初始化
+        async function init() {
+            renderToolsBar();
+            await createNewSession();
+        }
+        
+        // 渲染工具栏
+        function renderToolsBar() {
+            const toolsBar = document.getElementById('toolsBar');
+            toolsBar.innerHTML = availableTools.map(tool => `
+                <div class="tool-chip" onclick="toggleTool('${tool.name}')">
+                    ${tool.label}
+                </div>
+            `).join('');
+        }
+        
+        // 切换工具
+        function toggleTool(toolName) {
+            const index = enabledTools.indexOf(toolName);
+            if (index > -1) {
+                enabledTools.splice(index, 1);
+            } else {
+                enabledTools.push(toolName);
+            }
+            
+            // 更新UI
+            const chips = document.querySelectorAll('.tool-chip');
+            chips.forEach(chip => {
+                const name = availableTools.find(t => 
+                    chip.textContent.includes(t.label)
+                )?.name;
+                if (enabledTools.includes(name)) {
+                    chip.classList.add('active');
+                } else {
+                    chip.classList.remove('active');
+                }
+            });
+        }
+        
+        // 创建新会话
+        async function createNewSession() {
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/conversations/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: '新对话',
+                        model: 'deepseek-chat'
+                    })
+                });
+                
+                const data = await response.json();
+                currentSessionId = data.session_id;
+                
+                updateSessionInfo();
+                addSystemMessage(`会话已创建: ${currentSessionId.substring(0, 16)}...`);
+            } catch (error) {
+                addSystemMessage('❌ 创建会话失败: ' + error.message);
+            }
+        }
+        
+        // 更新会话信息
+        function updateSessionInfo() {
+            const info = document.getElementById('sessionInfo');
+            if (currentSessionId) {
+                info.textContent = `会话ID: ${currentSessionId.substring(0, 24)}...`;
+            }
+        }
+        
+        // 发送消息
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message || !currentSessionId) return;
+            
+            // 显示用户消息
+            addMessage('user', message);
+            input.value = '';
+            
+            // 禁用发送按钮
+            const sendButton = document.getElementById('sendButton');
+            sendButton.disabled = true;
+            
+            // 显示加载动画
+            const loadingId = showLoading();
+            
+            try {
+                const payload = { message };
+                if (enabledTools.length > 0) {
+                    payload.enable_tools = enabledTools;
+                }
+                
+                const response = await fetch(
+                    `${API_BASE}/api/v1/conversations/${currentSessionId}/messages`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    }
+                );
+                
+                const data = await response.json();
+                
+                // 移除加载动画
+                removeLoading(loadingId);
+                
+                // 显示助手回复
+                addMessage('assistant', data.answer, data.steps);
+                
+            } catch (error) {
+                removeLoading(loadingId);
+                addMessage('assistant', '抱歉,发生了错误: ' + error.message);
+            } finally {
+                sendButton.disabled = false;
+            }
+        }
+        
+        // 添加消息到聊天区域
+        function addMessage(role, content, steps = null) {
+            const chatArea = document.getElementById('chatArea');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            
+            let html = `<div class="message-content">${escapeHtml(content)}`;
+            
+            if (steps && steps.length > 0) {
+                html += `<div class="tool-info">`;
+                html += `🔧 使用了工具: `;
+                const tools = steps.map(s => s.action).filter(a => a !== 'finish');
+                html += tools.join(', ');
+                html += `</div>`;
+            }
+            
+            html += `</div>`;
+            messageDiv.innerHTML = html;
+            
+            chatArea.appendChild(messageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+        
+        // 添加系统消息
+        function addSystemMessage(content) {
+            const chatArea = document.getElementById('chatArea');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message system';
+            messageDiv.innerHTML = `<div class="message-content">${escapeHtml(content)}</div>`;
+            chatArea.appendChild(messageDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+        
+        // 显示加载动画
+        function showLoading() {
+            const chatArea = document.getElementById('chatArea');
+            const loadingDiv = document.createElement('div');
+            const id = 'loading-' + Date.now();
+            loadingDiv.id = id;
+            loadingDiv.className = 'message assistant';
+            loadingDiv.innerHTML = `
+                <div class="message-content">
+                    <div class="loading">
+                        <div class="loading-dot"></div>
+                        <div class="loading-dot"></div>
+                        <div class="loading-dot"></div>
+                    </div>
+                </div>
+            `;
+            chatArea.appendChild(loadingDiv);
+            chatArea.scrollTop = chatArea.scrollHeight;
+            return id;
+        }
+        
+        // 移除加载动画
+        function removeLoading(id) {
+            const loadingDiv = document.getElementById(id);
+            if (loadingDiv) {
+                loadingDiv.remove();
+            }
+        }
+        
+        // 清空聊天
+        function clearChat() {
+            if (confirm('确定清空当前对话?')) {
+                const chatArea = document.getElementById('chatArea');
+                chatArea.innerHTML = `
+                    <div class="message system">
+                        <div class="message-content">
+                            对话已清空
+                        </div>
+                    </div>
+                `;
+            }
+        }
+        
+        // 新建对话
+        async function newConversation() {
+            if (confirm('确定开始新对话?')) {
+                clearChat();
+                await createNewSession();
+            }
+        }
+        
+        // 处理回车键
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+        
+        // HTML转义
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // 页面加载时初始化
+        window.onload = init;
+    </script>
+</body>
+</html>
