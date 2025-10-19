@@ -1,87 +1,81 @@
 """
-会话管理API路由
+会话管理 API 路由 - 重构版本
+支持动态参数配置和灵活的RAG
 """
 from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
-import os
+from typing import List, Optional, Dict, Any
+from sqlalchemy.orm import Session
 
 from ..database.database import get_db
-from ..database.models import Conversation, Message
 from ..database.conversation_service import ConversationService
-from ..services.conversational_agent import ConversationalAgent
-
-from ..agent.basic_tools import (
-    CalculatorTool,
-    DateTimeTool,
-    PythonREPLTool,
-    WebSearchTool,
-    KnowledgeBaseTool
-)
-from ..agent.advanced_tools import (
-    WeatherTool,
-    TextAnalysisTool,
-    JSONParserTool,
-    TimerTool,
-    UnitConverterTool
-)
 from ..services.rag_service import get_rag_service
+import httpx
+import os
 
 router = APIRouter(prefix="/api/v1/conversations", tags=["Conversations"])
 
 
 # ============================================================
-# Pydantic 模型
+# Pydantic 模型定义
 # ============================================================
 
 class CreateConversationRequest(BaseModel):
-    """创建会话请求"""
+    """创建会话请求（简化版）"""
     title: Optional[str] = "新对话"
-    model: str = "deepseek-chat"
-    temperature: float = 0.7
-    max_tokens: int = 2000
-    enable_rag: bool = False
-    kb_name: Optional[str] = None
-    rag_top_k: int = 3
 
 
 class CreateConversationResponse(BaseModel):
     """创建会话响应"""
     session_id: str
     title: str
-    model: str
     created_at: str
+    message: str
 
 
 class SendMessageRequest(BaseModel):
-    """发送消息请求"""
+    """
+    发送消息请求（重构版）
+    
+    重构要点：
+    1. 每次发送消息都可以指定模型配置
+    2. 每次发送消息都可以独立决定是否使用RAG
+    3. 支持Agent配置
+    """
     message: str
-    # 工具由Agent自动选择，无需用户指定
+    
+    # 模型配置（可选，不指定则使用默认值）
+    model: Optional[str] = "deepseek-chat"
+    temperature: Optional[float] = 0.7
+    max_tokens: Optional[int] = 2000
+    
+    # RAG配置（可选）
+    enable_rag: Optional[bool] = False
+    kb_name: Optional[str] = None
+    rag_top_k: Optional[int] = 3
+    
+    # Agent配置（可选）
+    enable_agent: Optional[bool] = False
+    agent_max_iterations: Optional[int] = 10
+    agent_enable_tools: Optional[List[str]] = None
 
 
 class SendMessageResponse(BaseModel):
     """发送消息响应"""
     session_id: str
-    answer: str
-    success: bool
-    iterations: int
-    execution_time: float
-    rag_enabled: bool
-    source_documents: List[Dict[str, Any]]
-    steps: List[Dict[str, Any]]
+    user_message: Dict[str, Any]
+    assistant_message: Dict[str, Any]
+    rag_info: Optional[Dict[str, Any]] = None
+    agent_info: Optional[Dict[str, Any]] = None
 
 
 class ConversationInfo(BaseModel):
     """会话信息"""
     session_id: str
     title: str
-    model: str
-    enable_rag: bool
-    kb_name: Optional[str]
-    message_count: int
     created_at: str
     updated_at: str
+    message_count: int
 
 
 class MessageInfo(BaseModel):
@@ -90,10 +84,13 @@ class MessageInfo(BaseModel):
     role: str
     content: str
     created_at: str
+    has_config: bool
+    has_rag: bool
+    has_agent: bool
 
 
 # ============================================================
-# 工具和模型配置
+# 模型配置
 # ============================================================
 
 MODEL_CONFIGS = {
@@ -116,26 +113,6 @@ MODEL_CONFIGS = {
 }
 
 
-def get_available_tools() -> Dict[str, Any]:
-    """获取所有可用工具"""
-    rag_service = get_rag_service()
-    
-    tools = {
-        "calculator": CalculatorTool(),
-        "get_current_time": DateTimeTool(),
-        "python_repl": PythonREPLTool(),
-        "web_search": WebSearchTool(),
-        "knowledge_base_search": KnowledgeBaseTool(rag_service=rag_service),
-        "get_weather": WeatherTool(),
-        "analyze_text": TextAnalysisTool(),
-        "parse_json": JSONParserTool(),
-        "time_calculator": TimerTool(),
-        "convert_unit": UnitConverterTool()
-    }
-    
-    return tools
-
-
 # ============================================================
 # API 端点
 # ============================================================
@@ -146,55 +123,24 @@ async def create_conversation(
     db: Session = Depends(get_db)
 ):
     """
-    创建新会话
+    创建新会话（简化版）
     
-    功能:
-    - 生成唯一的session_id
-    - 配置模型和参数
-    - 支持RAG集成
+    重构说明：
+    - 不再需要指定模型、温度等参数
+    - 这些参数将在每次发送消息时动态指定
     """
     try:
         service = ConversationService(db)
-        
-        # 验证模型
-        if request.model not in MODEL_CONFIGS:
-            raise HTTPException(
-                status_code=400,
-                detail=f"不支持的模型: {request.model}"
-            )
-        
-        # 如果启用RAG,验证知识库
-        if request.enable_rag and not request.kb_name:
-            raise HTTPException(
-                status_code=400,
-                detail="启用RAG时必须指定知识库名称"
-            )
-        
-        # 创建会话
-        conversation = service.create_conversation(
-            model=request.model,
-            title=request.title,
-            temperature=request.temperature,
-            max_tokens=request.max_tokens,
-            enable_rag=request.enable_rag,
-            kb_name=request.kb_name,
-            rag_top_k=request.rag_top_k
-        )
+        conversation = service.create_conversation(title=request.title)
         
         return CreateConversationResponse(
             session_id=conversation.session_id,
             title=conversation.title,
-            model=conversation.model,
-            created_at=conversation.created_at.isoformat()
+            created_at=conversation.created_at.isoformat(),
+            message="会话创建成功"
         )
-        
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"创建会话失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/{session_id}/messages", response_model=SendMessageResponse)
@@ -204,120 +150,184 @@ async def send_message(
     db: Session = Depends(get_db)
 ):
     """
-    发送消息到会话
+    发送消息到会话（重构版）
     
-    功能:
-    - 多轮对话支持，自动保持上下文
-    - Agent自动判断并调用合适的工具（无需用户指定）
-    - RAG集成（如果会话启用）
-    - 自动保存对话历史
+    重构亮点：
+    1. 每次发送都可以指定不同的模型配置
+    2. 可以动态决定是否使用RAG和使用哪个知识库
+    3. 支持Agent模式
     
-    工作流程:
-    1. 用户发送消息
-    2. Agent分析问题
-    3. Agent自动选择需要的工具
-    4. 执行工具并生成回答
-    
-    示例:
-    ```json
-    {
-        "message": "帮我计算 123 * 456"
-    }
-    ```
-    
-    Agent会自动判断需要使用calculator工具，无需用户指定。
+    工作流程：
+    1. 验证会话是否存在
+    2. 如果启用RAG，检索知识库
+    3. 构建消息历史（包含RAG上下文）
+    4. 调用LLM生成回复
+    5. 保存用户消息和助手回复（包含配置和RAG信息）
     """
     try:
         service = ConversationService(db)
         
-        # 获取会话
+        # 1. 验证会话
         conversation = service.get_conversation(session_id)
         if not conversation:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        
+        # 2. 验证模型配置
+        if request.model not in MODEL_CONFIGS:
             raise HTTPException(
-                status_code=404,
-                detail=f"会话不存在: {session_id}"
+                status_code=400,
+                detail=f"不支持的模型: {request.model}"
             )
         
-        # 验证模型配置
-        model_config = MODEL_CONFIGS.get(conversation.model)
-        if not model_config or not model_config.get("api_key"):
+        llm_config = MODEL_CONFIGS[request.model]
+        if not llm_config.get("api_key"):
             raise HTTPException(
                 status_code=500,
-                detail=f"模型 {conversation.model} 配置无效"
+                detail=f"模型 {request.model} 的API密钥未设置"
             )
         
-        # 1. 保存用户消息
-        service.add_message(
-            session_id=session_id,
-            role="user",
-            content=request.message
-        )
+        # 3. RAG检索（如果启用）
+        rag_context = None
+        source_documents = []
+        rag_info = None
         
-        # 2. 获取历史消息
-        history = service.get_messages_as_dict(
-            session_id=session_id,
-            limit=20,  # 限制上下文长度
-            include_system=False
-        )
+        if request.enable_rag and request.kb_name:
+            try:
+                rag_service = get_rag_service()
+                rag_result = rag_service.rag_query(
+                    kb_name=request.kb_name,
+                    query=request.message,
+                    top_k=request.rag_top_k
+                )
+                
+                rag_context = rag_result.get("context", "")
+                source_documents = rag_result.get("source_documents", [])
+                
+                rag_info = {
+                    "enabled": True,
+                    "kb_name": request.kb_name,
+                    "top_k": request.rag_top_k,
+                    "documents_found": len(source_documents)
+                }
+                
+            except Exception as e:
+                print(f"RAG检索失败: {str(e)}")
+                # RAG失败不影响对话，继续执行
         
-        # 3. 获取所有可用工具（Agent会自动选择）
-        all_tools = get_available_tools()
-        tools = list(all_tools.values())  # 提供所有工具给Agent
+        # 4. 构建消息历史
+        history_messages = service.get_messages_as_dict(session_id)
         
-        # 4. 创建Agent并运行
-        agent_config = {
-            "api_key": model_config["api_key"],
-            "base_url": model_config["base_url"],
-            "model": conversation.model
+        # 构建LLM请求消息
+        llm_messages = []
+        
+        # 添加系统提示（如果有RAG上下文）
+        if rag_context:
+            system_prompt = f"""你是一个智能助手。请根据以下参考知识回答用户的问题。
+
+参考知识：
+{rag_context}
+
+回答要求：
+1. 优先使用参考知识中的信息
+2. 如果参考知识中没有相关信息，可以使用你的知识回答
+3. 回答要准确、清晰、有条理"""
+            
+            llm_messages.append({
+                "role": "system",
+                "content": system_prompt
+            })
+        
+        # 添加历史消息
+        llm_messages.extend(history_messages)
+        
+        # 添加当前用户消息
+        llm_messages.append({
+            "role": "user",
+            "content": request.message
+        })
+        
+        # 5. 调用LLM
+        payload = {
+            "model": request.model,
+            "messages": llm_messages,
+            "temperature": request.temperature,
+            "max_tokens": request.max_tokens
         }
         
-        agent = ConversationalAgent(
-            tools=tools,
-            llm_config=agent_config,
-            max_iterations=10,
-            temperature=conversation.temperature,
-            enable_rag=conversation.enable_rag,
-            kb_name=conversation.kb_name,
-            rag_top_k=conversation.rag_top_k,
-            verbose=True
-        )
-        
-        result = await agent.run(
-            user_message=request.message,
-            conversation_history=history
-        )
-        
-        # 5. 保存助手回复
-        if result.get("success"):
-            service.add_message(
-                session_id=session_id,
-                role="assistant",
-                content=result["answer"],
-                extra_data={
-                    "iterations": result.get("iterations"),
-                    "execution_time": result.get("execution_time"),
-                    "steps": result.get("steps", [])
-                }
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                llm_config["base_url"],
+                headers={
+                    "Authorization": f"Bearer {llm_config['api_key']}",
+                    "Content-Type": "application/json"
+                },
+                json=payload
             )
+            
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"LLM调用失败: {response.text}"
+                )
+            
+            result = response.json()
+            assistant_content = result["choices"][0]["message"]["content"]
         
+        # 6. 保存用户消息（包含配置）
+        model_config = {
+            "model": request.model,
+            "temperature": request.temperature,
+            "max_tokens": request.max_tokens
+        }
+        
+        rag_config = None
+        if request.enable_rag and request.kb_name:
+            rag_config = {
+                "enabled": True,
+                "kb_name": request.kb_name,
+                "top_k": request.rag_top_k,
+                "context": rag_context[:500] if rag_context else None,  # 只保存前500字符
+                "source_documents": source_documents
+            }
+        
+        user_msg = service.add_message(
+            session_id=session_id,
+            role="user",
+            content=request.message,
+            model_config=model_config,
+            rag_config=rag_config
+        )
+        
+        # 7. 保存助手回复
+        assistant_msg = service.add_message(
+            session_id=session_id,
+            role="assistant",
+            content=assistant_content,
+            model_config=model_config
+        )
+        
+        # 8. 构建响应
         return SendMessageResponse(
             session_id=session_id,
-            answer=result.get("answer", ""),
-            success=result.get("success", False),
-            iterations=result.get("iterations", 0),
-            execution_time=result.get("execution_time", 0),
-            rag_enabled=result.get("rag_enabled", False),
-            source_documents=result.get("source_documents", []),
-            steps=result.get("steps", [])
+            user_message={
+                "id": user_msg.id,
+                "role": user_msg.role,
+                "content": user_msg.content,
+                "created_at": user_msg.created_at.isoformat()
+            },
+            assistant_message={
+                "id": assistant_msg.id,
+                "role": assistant_msg.role,
+                "content": assistant_msg.content,
+                "created_at": assistant_msg.created_at.isoformat()
+            },
+            rag_info=rag_info
         )
         
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"发送消息失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"发送消息失败: {str(e)}")
 
 
 @router.get("/", response_model=List[ConversationInfo])
@@ -326,9 +336,7 @@ async def list_conversations(
     limit: int = 50,
     db: Session = Depends(get_db)
 ):
-    """
-    列出所有会话
-    """
+    """列出所有会话"""
     try:
         service = ConversationService(db)
         conversations = service.list_conversations(skip=skip, limit=limit)
@@ -338,21 +346,14 @@ async def list_conversations(
             result.append(ConversationInfo(
                 session_id=conv.session_id,
                 title=conv.title,
-                model=conv.model,
-                enable_rag=conv.enable_rag,
-                kb_name=conv.kb_name,
-                message_count=len(conv.messages),
                 created_at=conv.created_at.isoformat(),
-                updated_at=conv.updated_at.isoformat()
+                updated_at=conv.updated_at.isoformat(),
+                message_count=len(conv.messages)
             ))
         
         return result
-        
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"获取会话列表失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{session_id}")
@@ -360,40 +361,19 @@ async def get_conversation(
     session_id: str,
     db: Session = Depends(get_db)
 ):
-    """
-    获取会话详情
-    """
+    """获取会话详情（包含统计信息）"""
     try:
         service = ConversationService(db)
-        conversation = service.get_conversation(session_id)
+        summary = service.get_conversation_summary(session_id)
         
-        if not conversation:
-            raise HTTPException(
-                status_code=404,
-                detail=f"会话不存在: {session_id}"
-            )
+        if not summary:
+            raise HTTPException(status_code=404, detail="会话不存在")
         
-        return {
-            "session_id": conversation.session_id,
-            "title": conversation.title,
-            "model": conversation.model,
-            "temperature": conversation.temperature,
-            "max_tokens": conversation.max_tokens,
-            "enable_rag": conversation.enable_rag,
-            "kb_name": conversation.kb_name,
-            "rag_top_k": conversation.rag_top_k,
-            "message_count": len(conversation.messages),
-            "created_at": conversation.created_at.isoformat(),
-            "updated_at": conversation.updated_at.isoformat()
-        }
-        
+        return summary
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"获取会话失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{session_id}/messages", response_model=List[MessageInfo])
@@ -402,39 +382,34 @@ async def get_messages(
     limit: Optional[int] = None,
     db: Session = Depends(get_db)
 ):
-    """
-    获取会话的消息历史
-    """
+    """获取会话的消息历史"""
     try:
         service = ConversationService(db)
         
-        # 验证会话存在
+        # 验证会话
         conversation = service.get_conversation(session_id)
         if not conversation:
-            raise HTTPException(
-                status_code=404,
-                detail=f"会话不存在: {session_id}"
-            )
+            raise HTTPException(status_code=404, detail="会话不存在")
         
         messages = service.get_messages(session_id, limit=limit)
         
-        return [
-            MessageInfo(
+        result = []
+        for msg in messages:
+            result.append(MessageInfo(
                 id=msg.id,
                 role=msg.role,
-                content=msg.content or "",
-                created_at=msg.created_at.isoformat()
-            )
-            for msg in messages
-        ]
+                content=msg.content,
+                created_at=msg.created_at.isoformat(),
+                has_config=msg.extra_data and "config" in msg.extra_data if msg.extra_data else False,
+                has_rag=msg.extra_data and "rag" in msg.extra_data if msg.extra_data else False,
+                has_agent=msg.extra_data and "agent" in msg.extra_data if msg.extra_data else False
+            ))
         
+        return result
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"获取消息历史失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/{session_id}")
@@ -442,27 +417,40 @@ async def delete_conversation(
     session_id: str,
     db: Session = Depends(get_db)
 ):
-    """
-    删除会话
-    """
+    """删除会话"""
     try:
         service = ConversationService(db)
+        success = service.delete_conversation(session_id)
         
-        if not service.delete_conversation(session_id):
-            raise HTTPException(
-                status_code=404,
-                detail=f"会话不存在: {session_id}"
-            )
+        if not success:
+            raise HTTPException(status_code=404, detail="会话不存在")
         
-        return {"message": "会话已删除", "session_id": session_id}
-        
+        return {"message": "会话删除成功", "session_id": session_id}
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"删除会话失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/{session_id}/title")
+async def update_title(
+    session_id: str,
+    title: str,
+    db: Session = Depends(get_db)
+):
+    """更新会话标题"""
+    try:
+        service = ConversationService(db)
+        success = service.update_conversation_title(session_id, title)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="会话不存在")
+        
+        return {"message": "标题更新成功", "session_id": session_id, "title": title}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/{session_id}/messages")
@@ -470,65 +458,23 @@ async def clear_messages(
     session_id: str,
     db: Session = Depends(get_db)
 ):
-    """
-    清空会话消息
-    """
+    """清空会话消息"""
     try:
         service = ConversationService(db)
         
-        # 验证会话存在
+        # 验证会话
         conversation = service.get_conversation(session_id)
         if not conversation:
-            raise HTTPException(
-                status_code=404,
-                detail=f"会话不存在: {session_id}"
-            )
+            raise HTTPException(status_code=404, detail="会话不存在")
         
         count = service.clear_messages(session_id)
         
         return {
-            "message": "消息已清空",
+            "message": "消息清空成功",
             "session_id": session_id,
-            "deleted_count": count
+            "cleared_count": count
         }
-        
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"清空消息失败: {str(e)}"
-        )
-
-
-@router.patch("/{session_id}/title")
-async def update_title(
-    session_id: str,
-    title: str,
-    db: Session = Depends(get_db)
-):
-    """
-    更新会话标题
-    """
-    try:
-        service = ConversationService(db)
-        
-        if not service.update_conversation_title(session_id, title):
-            raise HTTPException(
-                status_code=404,
-                detail=f"会话不存在: {session_id}"
-            )
-        
-        return {
-            "message": "标题已更新",
-            "session_id": session_id,
-            "title": title
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"更新标题失败: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=str(e))

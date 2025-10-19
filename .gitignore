@@ -84,3 +84,90 @@ Thumbs.db
 # Test files (optional, uncomment if needed)
 # test_*.py
 # *_test.py
+
+# ----------------------------------------------------------------------
+# Node / Dependency Files
+# ----------------------------------------------------------------------
+frontend/node_modules
+/.pnp
+.pnp.js
+node_modules
+
+# Yarn
+.yarn/*
+!/.yarn/patches
+!/.yarn/plugins
+!/.yarn/releases
+!/.yarn/sdks
+!/.yarn/versions
+
+# Lock files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm
+.eslintcache # ESLint 缓存文件
+
+# ----------------------------------------------------------------------
+# Build & Next.js Output Directories
+# ----------------------------------------------------------------------
+# Next.js build output
+.next/
+/out/
+/build/
+
+# Turbopack/SWC Cache
+.swc/
+.turbo/
+
+# Generated TypeScript files
+*.tsbuildinfo
+
+# Coverage/Test Output
+/coverage
+/lcov-report
+
+# ----------------------------------------------------------------------
+# Environment Variables & Secrets
+# ----------------------------------------------------------------------
+# Local environment variables
+.env
+.env.local
+.env.development.local
+.env.production.local
+
+# Vercel deployment cache
+.vercel/
+
+# ----------------------------------------------------------------------
+# IDE & System Files
+# ----------------------------------------------------------------------
+# VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+# JetBrains IDEs (WebStorm, IntelliJ)
+.idea/
+
+# Mac/OS Files
+.DS_Store
+
+# Windows Files
+Thumbs.db
+
+# ----------------------------------------------------------------------
+# Custom/Temporary Files
+# ----------------------------------------------------------------------
+# 针对您的 ARDA 项目，如果您创建了临时的调试文件或数据
+/temp
+/tmp
+*.log
+
+# 如果您使用 Next.js 自动生成的测试文件（如果有）
+/cypress/videos
+/cypress/screenshots

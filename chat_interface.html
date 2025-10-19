@@ -3,130 +3,201 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI助手 - 多轮对话</title>
+    <title>AI助手 - 多轮对话与知识库</title>
     <style>
+        /* 基础样式和布局 */
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #f0f2f5;
             min-height: 100vh;
             display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
         }
-        
-        .container {
-            max-width: 1000px;
-            width: 100%;
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            overflow: hidden;
+        .app-container {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* 侧栏样式 */
+        .sidebar {
+            width: 300px;
+            background: #282c34;
+            color: white;
             display: flex;
             flex-direction: column;
-            height: 80vh;
+            padding: 10px;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
         }
-        
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        .sidebar-header {
+            padding: 15px 10px;
+            text-align: center;
+            font-size: 1.2em;
+            font-weight: 600;
+            border-bottom: 1px solid #3c4048;
+        }
+        .new-chat-btn {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            background: #61afef;
             color: white;
-            padding: 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+        .new-chat-btn:hover {
+            background: #569cd6;
+        }
+        .conversation-list {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+        .conv-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            padding: 12px 10px;
+            margin-bottom: 5px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
         }
-        
-        .header h1 {
-            font-size: 24px;
+        .conv-item:hover, .conv-item.active {
+            background: #3c4048;
+        }
+        .conv-title {
+            flex-grow: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 14px;
+        }
+        .conv-actions button {
+            background: none;
+            border: none;
+            color: #ccc;
+            margin-left: 5px;
+            cursor: pointer;
+            padding: 0;
+            line-height: 1;
+        }
+        .conv-actions button:hover {
+            color: white;
+        }
+        .sidebar-footer {
+            padding: 10px;
+            border-top: 1px solid #3c4048;
+        }
+        .rag-management-btn {
+            width: 100%;
+            padding: 10px;
+            background: #98c379;
+            color: #282c34;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
             font-weight: 600;
+            transition: background 0.2s;
         }
-        
-        .session-info {
-            font-size: 12px;
-            opacity: 0.9;
+        .rag-management-btn:hover {
+            background: #7bd365;
         }
-        
+
+        /* 主内容区样式 */
+        .main-content {
+            flex: 1;
+            display: none; /* 默认隐藏 */
+            flex-direction: column;
+            background: white;
+            position: relative;
+        }
+        .main-content.active {
+            display: flex;
+        }
+        .header {
+            background: #f7f9fc;
+            color: #333;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+        }
+        .header h1 {
+            font-size: 18px;
+            font-weight: 500;
+        }
         .chat-area {
             flex: 1;
             overflow-y: auto;
             padding: 20px;
             background: #f7f9fc;
         }
-        
         .message {
             display: flex;
             margin-bottom: 16px;
-            animation: slideIn 0.3s ease;
+            animation: fadeIn 0.3s ease;
         }
-        
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
         }
-        
-        .message.user {
-            justify-content: flex-end;
-        }
-        
+        .message.user { justify-content: flex-end; }
         .message-content {
             max-width: 70%;
             padding: 12px 16px;
             border-radius: 12px;
             word-wrap: break-word;
+            line-height: 1.6;
         }
-        
         .message.user .message-content {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #61afef;
             color: white;
         }
-        
         .message.assistant .message-content {
             background: white;
             color: #333;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
-        
         .message.system .message-content {
+            max-width: 100%; 
+            text-align: center;
             background: #e3f2fd;
             color: #1976d2;
             font-size: 13px;
-            text-align: center;
-            max-width: 100%;
         }
-        
-        .tool-info {
-            font-size: 12px;
-            margin-top: 8px;
-            padding: 8px;
-            background: rgba(0, 0, 0, 0.05);
-            border-radius: 6px;
-            color: #666;
-        }
-        
         .input-area {
             padding: 20px;
             background: white;
             border-top: 1px solid #e0e0e0;
         }
-        
+        .rag-selector {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 8px;
+        }
+        #kbSelector {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            min-width: 200px;
+        }
         .input-container {
             display: flex;
             gap: 10px;
-            margin-bottom: 10px;
         }
-        
         #messageInput {
             flex: 1;
             padding: 12px 16px;
@@ -136,224 +207,533 @@
             outline: none;
             transition: border-color 0.3s;
         }
-        
-        #messageInput:focus {
-            border-color: #667eea;
-        }
-        
         #sendButton {
             padding: 12px 24px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #61afef;
             color: white;
             border: none;
             border-radius: 24px;
             cursor: pointer;
             font-weight: 600;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: background 0.2s;
         }
-        
-        #sendButton:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-        }
-        
         #sendButton:disabled {
             opacity: 0.5;
             cursor: not-allowed;
-            transform: none;
         }
-        
-        .toolbar {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-        
-        .tool-chip {
-            padding: 6px 12px;
-            background: #f0f0f0;
-            border: 1px solid #d0d0d0;
-            border-radius: 16px;
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        
-        .tool-chip:hover {
-            background: #e0e0e0;
-        }
-        
-        .tool-chip.active {
-            background: #667eea;
-            color: white;
-            border-color: #667eea;
-        }
-        
-        .loading {
-            display: flex;
-            gap: 4px;
-            padding: 12px;
-        }
-        
+        .loading { padding: 12px; }
         .loading-dot {
-            width: 8px;
-            height: 8px;
-            background: #667eea;
-            border-radius: 50%;
-            animation: bounce 1.4s infinite ease-in-out;
+            width: 8px; height: 8px; background: #61afef; border-radius: 50%;
+            display: inline-block; animation: bounce 1.4s infinite ease-in-out;
+            margin-right: 4px;
         }
-        
         .loading-dot:nth-child(1) { animation-delay: -0.32s; }
         .loading-dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
         
-        @keyframes bounce {
-            0%, 80%, 100% { transform: scale(0); }
-            40% { transform: scale(1); }
+        .tool-info {
+            font-size: 12px;
+            margin-top: 8px;
+            padding: 8px;
+            border-radius: 6px;
+            color: #666;
+            white-space: pre-wrap;
         }
         
-        .controls {
+        /* 知识库管理视图 */
+        .rag-management-view {
+            padding: 20px;
+            overflow-y: auto;
+            flex: 1;
+            display: none; /* 默认隐藏 */
+            flex-direction: column;
+            background: #f7f9fc;
+        }
+        .rag-management-view.active {
             display: flex;
-            gap: 10px;
-            margin-top: 10px;
         }
-        
-        .control-button {
-            padding: 8px 16px;
-            background: #f0f0f0;
-            border: 1px solid #d0d0d0;
+        .kb-list-item {
+            padding: 15px;
+            margin-bottom: 10px;
+            background: white;
             border-radius: 8px;
-            cursor: pointer;
-            font-size: 13px;
-            transition: all 0.2s;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
-        
-        .control-button:hover {
-            background: #e0e0e0;
+        .kb-actions button {
+            background: #ef5350;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .kb-actions button:hover {
+             background: #c62828;
+        }
+        .kb-info {
+            flex-grow: 1;
+        }
+        .kb-info p {
+            font-size: 14px;
+            color: #666;
+        }
+        .add-text-form {
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            margin-top: 20px;
+        }
+        .add-text-form label {
+            display: block;
+            margin-top: 10px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .add-text-form textarea, .add-text-form input {
+            width: 100%;
+            padding: 10px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .add-text-form button {
+            background: #98c379;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            margin-top: 10px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .add-text-form button:hover {
+            background: #7bd365;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div>
-                <h1>🤖 AI智能助手</h1>
-                <div class="session-info" id="sessionInfo">正在初始化...</div>
-            </div>
-            <div class="controls">
-                <button class="control-button" onclick="newConversation()">新对话</button>
-                <button class="control-button" onclick="clearChat()">清空</button>
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="sidebar-header">🤖 AI Chat 平台</div>
+            
+            <button class="new-chat-btn" onclick="newConversation(true)">+ 新建对话</button>
+            
+            <div class="conversation-list" id="conversationList">
+                </div>
+            
+            <div class="sidebar-footer">
+                <button class="rag-management-btn" onclick="switchView('rag')">📚 知识库管理</button>
             </div>
         </div>
-        
-        <div class="chat-area" id="chatArea">
-            <div class="message system">
-                <div class="message-content">
-                    👋 你好!我是AI助手,可以帮你解答问题、执行计算、查询信息等。
+
+        <div class="main-content" id="chatView">
+            <div class="header">
+                <h1 id="chatTitle">加载中...</h1>
+                <div id="sessionInfo" style="font-size: 12px; color: #666;"></div>
+            </div>
+            
+            <div class="chat-area" id="chatArea">
+                </div>
+            
+            <div class="input-area">
+                <div class="rag-selector">
+                    <label>知识库 (RAG):</label>
+                    <select id="kbSelector" onchange="updateRAGConfig()"></select>
+                </div>
+
+                <div class="input-container">
+                    <input 
+                        type="text" 
+                        id="messageInput" 
+                        placeholder="输入消息..."
+                        onkeypress="handleKeyPress(event)"
+                    />
+                    <button id="sendButton" onclick="sendMessage()">发送</button>
                 </div>
             </div>
         </div>
         
-        <div class="input-area">
-            <div class="toolbar" id="toolsBar">
-                <!-- 工具选择按钮将动态添加 -->
+        <div class="rag-management-view" id="ragView">
+            <h2>📚 知识库列表</h2>
+            <p style="margin-bottom: 20px;">以下是所有可用的知识库及其状态。</p>
+            <button class="new-chat-btn" style="background: #61afef;" onclick="loadKnowledgeBaseList()">🔄 刷新列表</button>
+
+            <div id="kbListContainer" style="margin-top: 15px;">
+                </div>
+
+            <div class="add-text-form">
+                <h3>手动添加文本到知识库</h3>
+                <label>知识库名称 (如果不存在将尝试创建):</label>
+                <input type="text" id="addTextKbName" placeholder="例如: project_docs">
+                <label>文本内容:</label>
+                <textarea id="addTextContent" rows="5" placeholder="输入要添加到知识库的文本..."></textarea>
+                <button onclick="addTextToKb()">添加并分块</button>
             </div>
             
-            <div class="input-container">
-                <input 
-                    type="text" 
-                    id="messageInput" 
-                    placeholder="输入消息..."
-                    onkeypress="handleKeyPress(event)"
-                />
-                <button id="sendButton" onclick="sendMessage()">发送</button>
-            </div>
+            <button class="rag-management-btn" style="background: #98c379; margin-top: 20px;" onclick="switchView('chat')">← 返回聊天</button>
         </div>
+
     </div>
 
     <script>
-        const API_BASE = 'http://localhost:8000';
+        const API_BASE = 'http://localhost:8000'; // 请确保您的API运行在此地址
         let currentSessionId = null;
-        let enabledTools = [];
+        let currentKbName = null;
+        let isRagEnabled = false;
         
-        // 可用工具列表
-        const availableTools = [
-            { name: 'calculator', label: '🔢 计算器' },
-            { name: 'get_current_time', label: '⏰ 时间' },
-            { name: 'get_weather', label: '🌤️ 天气' },
-            { name: 'convert_unit', label: '📏 单位转换' },
-            { name: 'analyze_text', label: '📝 文本分析' },
-            { name: 'web_search', label: '🔍 搜索' }
-        ];
-        
-        // 初始化
-        async function init() {
-            renderToolsBar();
-            await createNewSession();
-        }
-        
-        // 渲染工具栏
-        function renderToolsBar() {
-            const toolsBar = document.getElementById('toolsBar');
-            toolsBar.innerHTML = availableTools.map(tool => `
-                <div class="tool-chip" onclick="toggleTool('${tool.name}')">
-                    ${tool.label}
-                </div>
-            `).join('');
-        }
-        
-        // 切换工具
-        function toggleTool(toolName) {
-            const index = enabledTools.indexOf(toolName);
-            if (index > -1) {
-                enabledTools.splice(index, 1);
-            } else {
-                enabledTools.push(toolName);
-            }
+        // =======================================================================
+        // 视图切换
+        // =======================================================================
+        function switchView(view) {
+            document.getElementById('chatView').classList.remove('active');
+            document.getElementById('ragView').classList.remove('active');
             
-            // 更新UI
-            const chips = document.querySelectorAll('.tool-chip');
-            chips.forEach(chip => {
-                const name = availableTools.find(t => 
-                    chip.textContent.includes(t.label)
-                )?.name;
-                if (enabledTools.includes(name)) {
-                    chip.classList.add('active');
+            if (view === 'chat') {
+                document.getElementById('chatView').classList.add('active');
+                if (currentSessionId) {
+                    // 确保切换回来时加载当前会话的消息
+                    loadMessages(currentSessionId); 
                 } else {
-                    chip.classList.remove('active');
+                    addSystemMessage('请新建一个对话。');
                 }
-            });
+            } else if (view === 'rag') {
+                document.getElementById('ragView').classList.add('active');
+                loadKnowledgeBaseList(); // 切换到RAG视图时加载列表
+            }
+        }
+
+        // =======================================================================
+        // 初始化
+        // =======================================================================
+        async function init() {
+            await loadKnowledgeBases(); // 1. 加载知识库列表填充下拉框
+            await loadConversations();  // 2. 加载历史对话
+            
+            // 默认显示聊天视图
+            switchView('chat');
         }
         
+        // =======================================================================
+        // RAG 知识库功能
+        // =======================================================================
+        async function loadKnowledgeBases() {
+            const selector = document.getElementById('kbSelector');
+            selector.innerHTML = '<option value="">无 (仅LLM)</option>';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/rag/knowledge-bases`);
+                const data = await response.json();
+                
+                if (data.knowledge_bases && data.knowledge_bases.length > 0) {
+                    data.knowledge_bases.forEach(kb => {
+                        const option = document.createElement('option');
+                        option.value = kb.name;
+                        option.textContent = `${kb.name} (${kb.count} 块)`;
+                        selector.appendChild(option);
+                    });
+                }
+                
+                // 默认RAG配置
+                const selectedKb = selector.value || null;
+                currentKbName = selectedKb;
+                isRagEnabled = !!selectedKb;
+
+            } catch (error) {
+                console.error('加载知识库列表失败:', error);
+                // 避免在没有知识库时崩溃
+            }
+        }
+        
+        // 更新会话的 RAG 配置 (仅影响新建会话)
+        function updateRAGConfig() {
+            const selector = document.getElementById('kbSelector');
+            currentKbName = selector.value || null;
+            isRagEnabled = !!currentKbName;
+            
+            document.getElementById('sessionInfo').textContent = 
+                isRagEnabled ? 
+                `RAG: ${currentKbName} (需新建会话应用)` :
+                `RAG: 无 (需新建会话应用)`;
+        }
+
+        // =======================================================================
+        // 会话管理功能
+        // =======================================================================
+
         // 创建新会话
-        async function createNewSession() {
+        async function newConversation(switchAfterCreation = false) {
+            const kbSelector = document.getElementById('kbSelector');
+            const selectedKb = kbSelector.value;
+            const enableRag = !!selectedKb;
+            
             try {
                 const response = await fetch(`${API_BASE}/api/v1/conversations/`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        title: '新对话',
-                        model: 'deepseek-chat'
+                        title: '新对话 ' + new Date().toLocaleTimeString(),
+                        model: 'deepseek-chat', // 默认模型
+                        enable_rag: enableRag,
+                        kb_name: selectedKb,
+                        rag_top_k: 3
                     })
                 });
                 
-                const data = await response.json();
-                currentSessionId = data.session_id;
+                if (!response.ok) throw new Error('API创建会话失败');
                 
-                updateSessionInfo();
-                addSystemMessage(`会话已创建: ${currentSessionId.substring(0, 16)}...`);
+                const data = await response.json();
+                
+                currentSessionId = data.session_id;
+                currentKbName = selectedKb;
+                isRagEnabled = enableRag;
+
+                document.getElementById('kbSelector').value = selectedKb;
+                document.getElementById('chatTitle').textContent = data.title;
+                updateSessionInfo('deepseek-chat'); // 假设默认模型
+                
+                await loadConversations();
+                
+                document.getElementById('chatArea').innerHTML = '';
+                addSystemMessage(`会话已创建: ${data.title}${enableRag ? ` (知识库: ${selectedKb})` : ''}`);
+                
+                if (switchAfterCreation) {
+                    switchView('chat');
+                }
+                
+                return data;
+
             } catch (error) {
                 addSystemMessage('❌ 创建会话失败: ' + error.message);
+                console.error(error);
+            }
+        }
+
+        // 加载历史对话列表
+        async function loadConversations() {
+            const list = document.getElementById('conversationList');
+            list.innerHTML = '';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/conversations/`);
+                const conversations = await response.json();
+                
+                if (conversations && conversations.length > 0) {
+                    conversations.forEach(conv => {
+                        const item = document.createElement('div');
+                        item.className = 'conv-item' + (conv.session_id === currentSessionId ? ' active' : '');
+                        item.setAttribute('data-session-id', conv.session_id);
+                        item.setAttribute('data-kb-name', conv.kb_name || '');
+                        item.setAttribute('data-rag-enabled', conv.enable_rag);
+
+                        let titleText = conv.title;
+                        if (conv.enable_rag) {
+                            titleText = `[R] ${titleText}`;
+                        }
+
+                        // 标题显示，双击编辑
+                        const titleSpan = document.createElement('span');
+                        titleSpan.className = 'conv-title';
+                        titleSpan.textContent = titleText;
+                        titleSpan.ondblclick = (e) => startEditTitle(conv.session_id, e);
+                        
+                        // 操作按钮
+                        const actionsDiv = document.createElement('div');
+                        actionsDiv.className = 'conv-actions';
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.innerHTML = '🗑️';
+                        deleteBtn.onclick = (e) => deleteConversation(conv.session_id, e);
+                        actionsDiv.appendChild(deleteBtn);
+                        
+                        item.appendChild(titleSpan);
+                        item.appendChild(actionsDiv);
+                        
+                        item.onclick = (e) => {
+                             // 确保点击的是列表项本身，而不是操作按钮
+                            if (!e.target.closest('.conv-actions')) {
+                                // 从元素的属性中获取最新的 RAG 配置
+                                const kb = item.getAttribute('data-kb-name');
+                                const rag = item.getAttribute('data-rag-enabled') === 'true';
+                                selectConversation(conv.session_id, kb, rag);
+                            }
+                        };
+                        
+                        list.appendChild(item);
+
+                        // 如果当前会话未选中，默认选中最新的
+                        if (!currentSessionId) {
+                            selectConversation(conv.session_id, conv.kb_name, conv.enable_rag);
+                        }
+                    });
+                } else {
+                    addSystemMessage('当前没有历史对话,请新建。');
+                    document.getElementById('chatTitle').textContent = '新建对话';
+                }
+            } catch (error) {
+                console.error('加载历史对话失败:', error);
             }
         }
         
-        // 更新会话信息
-        function updateSessionInfo() {
-            const info = document.getElementById('sessionInfo');
-            if (currentSessionId) {
-                info.textContent = `会话ID: ${currentSessionId.substring(0, 24)}...`;
+        // 选中并切换会话
+        async function selectConversation(sessionId, kbName = null, enableRag = null) {
+            if (currentSessionId === sessionId) return;
+
+            currentSessionId = sessionId;
+            
+            // 更新侧栏选中状态
+            document.querySelectorAll('.conv-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            const selectedItem = document.querySelector(`.conv-item[data-session-id="${sessionId}"]`);
+            
+            if (selectedItem) {
+                selectedItem.classList.add('active');
+                
+                currentKbName = kbName;
+                isRagEnabled = enableRag;
+                
+                // 仅显示标题，RAG配置不在对话中更改
+                const titleSpan = selectedItem.querySelector('.conv-title');
+                const title = titleSpan.textContent.replace(/\[R\]/g, '').trim();
+                
+                document.getElementById('chatTitle').textContent = title;
+                document.getElementById('kbSelector').value = currentKbName || '';
+            }
+
+            // 加载消息历史并更新状态信息
+            await loadMessages(sessionId);
+        }
+
+        // 开始编辑标题
+        function startEditTitle(sessionId, event) {
+            const titleSpan = event.target;
+            const item = titleSpan.closest('.conv-item');
+            const hasRag = item.getAttribute('data-rag-enabled') === 'true';
+            const oldTitle = titleSpan.textContent.replace(hasRag ? /\[R\]/ : '', '').trim();
+            
+            // 创建输入框
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = oldTitle;
+            input.style.width = 'calc(100% - 40px)'; // 留出操作按钮的空间
+            input.onblur = () => finishEditTitle(sessionId, input, titleSpan, hasRag);
+            input.onkeypress = (e) => {
+                if (e.key === 'Enter') {
+                    input.blur(); // 触发 onblur 事件
+                }
+            };
+
+            // 替换标题
+            titleSpan.style.display = 'none'; // 隐藏旧标题
+            titleSpan.parentNode.insertBefore(input, titleSpan.nextSibling); // 插入输入框
+            input.focus();
+        }
+
+        // 完成编辑标题
+        async function finishEditTitle(sessionId, inputElement, titleSpan, hasRag) {
+            const newTitle = inputElement.value.trim();
+            
+            // 移除输入框
+            inputElement.parentNode.removeChild(inputElement);
+            titleSpan.style.display = 'inline-block'; // 显示旧标题
+
+            if (newTitle && newTitle !== titleSpan.textContent.replace(hasRag ? /\[R\]/ : '', '').trim()) {
+                try {
+                    const response = await fetch(`${API_BASE}/api/v1/conversations/${sessionId}/title?title=${encodeURIComponent(newTitle)}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+
+                    if (!response.ok) {
+                        throw new Error('更新失败');
+                    }
+                    
+                    // 最终更新
+                    titleSpan.textContent = hasRag ? `[R] ${newTitle}` : newTitle;
+                    if (sessionId === currentSessionId) {
+                        document.getElementById('chatTitle').textContent = newTitle;
+                    }
+
+                } catch (error) {
+                    alert(`更新标题失败: ${error.message}`);
+                    loadConversations(); // 失败则重新加载，恢复旧标题
+                }
+            } else {
+                 loadConversations(); // 恢复旧标题
             }
         }
         
+        // 删除会话
+        async function deleteConversation(sessionId, event) {
+            event.stopPropagation(); // 阻止触发 selectConversation
+            if (!confirm('确定要删除此对话吗?')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/conversations/${sessionId}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    if (sessionId === currentSessionId) {
+                        currentSessionId = null;
+                        document.getElementById('chatArea').innerHTML = '';
+                        document.getElementById('chatTitle').textContent = '已删除当前会话';
+                    }
+                    
+                    await loadConversations();
+                    
+                    // 如果删除了当前会话，自动选择第一个或创建新会话
+                    if (!currentSessionId && document.querySelectorAll('.conv-item').length > 0) {
+                         document.querySelector('.conv-item').click();
+                    } else if (!currentSessionId) {
+                        await newConversation(false);
+                    }
+                    
+                } else {
+                    throw new Error('删除失败');
+                }
+            } catch (error) {
+                alert('删除会话失败: ' + error.message);
+            }
+        }
+
+        // =======================================================================
+        // 消息/对话功能
+        // =======================================================================
+
+        // 加载消息历史
+        async function loadMessages(sessionId) {
+            const chatArea = document.getElementById('chatArea');
+            chatArea.innerHTML = '';
+            addSystemMessage('加载历史消息...');
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/conversations/${sessionId}/messages`);
+                const messages = await response.json();
+                
+                chatArea.innerHTML = '';
+                // 从conversation_routes.py可知，会话信息中没有 model，这里使用占位符
+                updateSessionInfo('模型...'); 
+                
+                messages.forEach(msg => {
+                    if (msg.role === 'user' || msg.role === 'assistant') {
+                        // 假设 extra_data 中包含 steps 和 source_documents (agent的返回结果)
+                        const steps = msg.extra_data?.steps;
+                        const sourceDocs = msg.extra_data?.source_documents; 
+                        
+                        addMessage(msg.role, msg.content, steps, sourceDocs);
+                    }
+                });
+                chatArea.scrollTop = chatArea.scrollHeight;
+            } catch (error) {
+                addSystemMessage('❌ 加载消息历史失败: ' + error.message);
+            }
+        }
+
         // 发送消息
         async function sendMessage() {
             const input = document.getElementById('messageInput');
@@ -374,9 +754,6 @@
             
             try {
                 const payload = { message };
-                if (enabledTools.length > 0) {
-                    payload.enable_tools = enabledTools;
-                }
                 
                 const response = await fetch(
                     `${API_BASE}/api/v1/conversations/${currentSessionId}/messages`,
@@ -387,35 +764,46 @@
                     }
                 );
                 
+                if (!response.ok) throw new Error('API响应错误');
+                
                 const data = await response.json();
                 
                 // 移除加载动画
                 removeLoading(loadingId);
                 
-                // 显示助手回复
-                addMessage('assistant', data.answer, data.steps);
+                // 显示助手回复 (数据结构来自 SendMessageResponse)
+                addMessage('assistant', data.answer, data.steps, data.source_documents);
+                
+                // 更新会话列表以显示最新时间
+                loadConversations();
                 
             } catch (error) {
                 removeLoading(loadingId);
                 addMessage('assistant', '抱歉,发生了错误: ' + error.message);
+                console.error(error);
             } finally {
                 sendButton.disabled = false;
             }
         }
         
         // 添加消息到聊天区域
-        function addMessage(role, content, steps = null) {
+        function addMessage(role, content, steps = null, sourceDocs = null) {
             const chatArea = document.getElementById('chatArea');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}`;
             
-            let html = `<div class="message-content">${escapeHtml(content)}`;
+            let html = `<div class="message-content"><div>${escapeHtml(content)}</div>`;
             
             if (steps && steps.length > 0) {
-                html += `<div class="tool-info">`;
-                html += `🔧 使用了工具: `;
-                const tools = steps.map(s => s.action).filter(a => a !== 'finish');
-                html += tools.join(', ');
+                const toolInfo = steps.map(s => s.action).filter(a => a !== 'finish').join(', ');
+                if (toolInfo) {
+                    html += `<div class="tool-info">🔧 **Agent工具**: ${toolInfo}</div>`;
+                }
+            }
+
+            if (sourceDocs && sourceDocs.length > 0) {
+                html += `<div class="tool-info" style="margin-top: 4px; background: #e0f7fa;">`;
+                html += `📚 **RAG来源**: 检索到 ${sourceDocs.length} 个文档。`;
                 html += `</div>`;
             }
             
@@ -426,7 +814,7 @@
             chatArea.scrollTop = chatArea.scrollHeight;
         }
         
-        // 添加系统消息
+        // 添加系统消息 (用于提示信息)
         function addSystemMessage(content) {
             const chatArea = document.getElementById('chatArea');
             const messageDiv = document.createElement('div');
@@ -434,6 +822,13 @@
             messageDiv.innerHTML = `<div class="message-content">${escapeHtml(content)}</div>`;
             chatArea.appendChild(messageDiv);
             chatArea.scrollTop = chatArea.scrollHeight;
+        }
+        
+        // 更新会话信息
+        function updateSessionInfo(model) {
+            const info = document.getElementById('sessionInfo');
+            const ragText = currentKbName ? `RAG: ${currentKbName}` : 'RAG: 无';
+            info.textContent = `${ragText} | 模型: ${model}`;
         }
         
         // 显示加载动画
@@ -465,31 +860,10 @@
             }
         }
         
-        // 清空聊天
-        function clearChat() {
-            if (confirm('确定清空当前对话?')) {
-                const chatArea = document.getElementById('chatArea');
-                chatArea.innerHTML = `
-                    <div class="message system">
-                        <div class="message-content">
-                            对话已清空
-                        </div>
-                    </div>
-                `;
-            }
-        }
-        
-        // 新建对话
-        async function newConversation() {
-            if (confirm('确定开始新对话?')) {
-                clearChat();
-                await createNewSession();
-            }
-        }
-        
         // 处理回车键
         function handleKeyPress(event) {
-            if (event.key === 'Enter') {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault(); // 阻止默认的换行行为
                 sendMessage();
             }
         }
@@ -501,6 +875,107 @@
             return div.innerHTML;
         }
         
+        // =======================================================================
+        // 知识库管理视图功能
+        // =======================================================================
+
+        async function loadKnowledgeBaseList() {
+            const container = document.getElementById('kbListContainer');
+            container.innerHTML = '正在加载...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/rag/knowledge-bases`);
+                const data = await response.json();
+                const kbs = data.knowledge_bases;
+
+                if (kbs && kbs.length > 0) {
+                    container.innerHTML = kbs.map(kb => `
+                        <div class="kb-list-item">
+                            <div class="kb-info">
+                                <strong>${kb.name}</strong>
+                                <p>${kb.metadata?.description || '无描述'}</p>
+                                <p style="font-size:12px;">文档块数: ${kb.count}</p>
+                            </div>
+                            <div class="kb-actions">
+                                <button onclick="deleteKnowledgeBase('${kb.name}')">删除</button>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    container.innerHTML = '<p>当前没有知识库。</p>';
+                }
+            } catch (error) {
+                container.innerHTML = '<p style="color:red;">加载知识库列表失败，请检查后端服务和网络连接。</p>';
+                console.error('加载知识库列表失败:', error);
+            }
+        }
+
+        async function deleteKnowledgeBase(kbName) {
+            if (!confirm(`确定要删除知识库 "${kbName}" 吗? 这将永久删除所有数据。`)) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/rag/knowledge-bases/${kbName}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    alert(`知识库 "${kbName}" 删除成功!`);
+                    // 重新加载列表和下拉框
+                    await loadKnowledgeBaseList();
+                    await loadKnowledgeBases();
+                } else {
+                    throw new Error('删除失败: ' + (await response.json()).detail);
+                }
+            } catch (error) {
+                alert(`删除知识库失败: ${error.message}`);
+                console.error(error);
+            }
+        }
+
+        async function addTextToKb() {
+            const kbName = document.getElementById('addTextKbName').value.trim();
+            const text = document.getElementById('addTextContent').value.trim();
+
+            if (!kbName || !text) {
+                alert('请填写知识库名称和文本内容。');
+                return;
+            }
+
+            // 尝试创建知识库（如果已存在会返回 400 错误，但请求仍会继续）
+            await fetch(`${API_BASE}/api/v1/rag/knowledge-bases`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ kb_name: kbName, description: '用户手动添加的文本' })
+            }).catch(e => console.log('尝试创建KB，可能已存在'));
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/v1/rag/add-text`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        kb_name: kbName,
+                        text: text,
+                        metadata: { source: "web_interface_manual_input" }
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    alert(`文本已成功添加到知识库 "${kbName}"，共 ${data.chunks_count} 个文本块。`);
+                    document.getElementById('addTextContent').value = '';
+                    // 重新加载列表和下拉框
+                    await loadKnowledgeBaseList();
+                    await loadKnowledgeBases();
+                } else {
+                    throw new Error(data.detail || '添加文本失败');
+                }
+            } catch (error) {
+                alert(`添加文本失败: ${error.message}`);
+                console.error(error);
+            }
+        }
+
         // 页面加载时初始化
         window.onload = init;
     </script>

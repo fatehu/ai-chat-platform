@@ -1,5 +1,6 @@
 """
-支持多轮对话的Agent - 集成会话历史和RAG
+支持多轮对话的Agent - 重构版本
+支持动态配置和灵活的RAG
 """
 import json
 from typing import List, Dict, Any, Optional
@@ -12,11 +13,16 @@ from ..services.rag_service import get_rag_service
 
 class ConversationalAgent:
     """
-    支持多轮对话的Agent
+    支持多轮对话的Agent（重构版）
+    
+    重构要点：
+    1. 不再在初始化时固定RAG配置
+    2. 每次运行时可以动态指定是否使用RAG和使用哪个知识库
+    3. 支持更灵活的配置
     
     特点:
     1. 会话历史管理
-    2. RAG集成
+    2. 动态RAG集成（每次消息可独立配置）
     3. Function Calling
     4. 上下文保持
     """
@@ -27,9 +33,6 @@ class ConversationalAgent:
         llm_config: Dict[str, Any],
         max_iterations: int = 10,
         temperature: float = 0.7,
-        enable_rag: bool = False,
-        kb_name: Optional[str] = None,
-        rag_top_k: int = 3,
         verbose: bool = False
     ):
         """
@@ -40,22 +43,14 @@ class ConversationalAgent:
             llm_config: LLM配置
             max_iterations: 最大迭代次数
             temperature: 温度参数
-            enable_rag: 是否启用RAG
-            kb_name: 知识库名称
-            rag_top_k: RAG检索数量
             verbose: 是否打印详细日志
         """
         self.tools = {tool.name: tool for tool in tools}
         self.llm_config = llm_config
         self.max_iterations = max_iterations
         self.temperature = temperature
-        self.enable_rag = enable_rag
-        self.kb_name = kb_name
-        self.rag_top_k = rag_top_k
         self.verbose = verbose
-        
-        if enable_rag:
-            self.rag_service = get_rag_service()
+        self.rag_service = get_rag_service()
     
     def _build_system_prompt(self, rag_context: Optional[str] = None) -> str:
         """构建系统提示词"""
@@ -170,16 +165,28 @@ class ConversationalAgent:
             "error": result.error if not result.success else None
         }, ensure_ascii=False)
     
-    async def _get_rag_context(self, query: str) -> Optional[Dict[str, Any]]:
-        """获取RAG上下文"""
-        if not self.enable_rag or not self.kb_name:
-            return None
+    async def _get_rag_context(
+        self,
+        query: str,
+        kb_name: str,
+        top_k: int = 3
+    ) -> Optional[Dict[str, Any]]:
+        """
+        获取RAG上下文（重构版）
         
+        Args:
+            query: 查询文本
+            kb_name: 知识库名称
+            top_k: 返回文档数量
+            
+        Returns:
+            RAG结果
+        """
         try:
             result = self.rag_service.rag_query(
-                kb_name=self.kb_name,
+                kb_name=kb_name,
                 query=query,
-                top_k=self.rag_top_k
+                top_k=top_k
             )
             return result
         except Exception as e:
@@ -190,14 +197,21 @@ class ConversationalAgent:
     async def run(
         self,
         user_message: str,
-        conversation_history: List[Dict[str, Any]]
+        conversation_history: List[Dict[str, Any]],
+        # 新增：动态RAG配置
+        enable_rag: bool = False,
+        kb_name: Optional[str] = None,
+        rag_top_k: int = 3
     ) -> Dict[str, Any]:
         """
-        运行Agent处理用户消息
+        运行Agent处理用户消息（重构版）
         
         Args:
             user_message: 用户消息
             conversation_history: 会话历史
+            enable_rag: 是否启用RAG（动态指定）
+            kb_name: 知识库名称（动态指定）
+            rag_top_k: RAG检索数量
             
         Returns:
             执行结果
@@ -209,14 +223,15 @@ class ConversationalAgent:
         rag_context = None
         source_documents = []
         
-        if self.enable_rag:
-            rag_result = await self._get_rag_context(user_message)
+        if enable_rag and kb_name:
+            rag_result = await self._get_rag_context(user_message, kb_name, rag_top_k)
             if rag_result:
                 rag_context = rag_result.get("context", "")
                 source_documents = rag_result.get("source_documents", [])
                 
                 if self.verbose:
                     print(f"\n📚 RAG检索到 {len(source_documents)} 条相关文档")
+                    print(f"知识库: {kb_name}")
         
         # 2. 构建消息列表
         messages = []
@@ -245,6 +260,8 @@ class ConversationalAgent:
         if self.verbose:
             print(f"\n{'='*60}")
             print(f"Agent开始处理: {user_message}")
+            if enable_rag:
+                print(f"RAG模式: 启用 (知识库: {kb_name})")
             print(f"{'='*60}\n")
         
         try:
@@ -289,8 +306,9 @@ class ConversationalAgent:
                             "steps": steps,
                             "iterations": iteration,
                             "execution_time": (datetime.now() - start_time).total_seconds(),
-                            "rag_enabled": self.enable_rag,
-                            "source_documents": source_documents if self.enable_rag else [],
+                            "rag_enabled": enable_rag,
+                            "rag_kb_name": kb_name if enable_rag else None,
+                            "source_documents": source_documents if enable_rag else [],
                             "messages_to_save": [
                                 {"role": "assistant", "content": final_answer}
                             ]
@@ -325,8 +343,9 @@ class ConversationalAgent:
                         "steps": steps,
                         "iterations": iteration,
                         "execution_time": (datetime.now() - start_time).total_seconds(),
-                        "rag_enabled": self.enable_rag,
-                        "source_documents": source_documents if self.enable_rag else [],
+                        "rag_enabled": enable_rag,
+                        "rag_kb_name": kb_name if enable_rag else None,
+                        "source_documents": source_documents if enable_rag else [],
                         "messages_to_save": [
                             {"role": "assistant", "content": answer}
                         ]
@@ -340,8 +359,9 @@ class ConversationalAgent:
                 "iterations": iteration,
                 "execution_time": (datetime.now() - start_time).total_seconds(),
                 "error": "达到最大迭代次数",
-                "rag_enabled": self.enable_rag,
-                "source_documents": source_documents if self.enable_rag else []
+                "rag_enabled": enable_rag,
+                "rag_kb_name": kb_name if enable_rag else None,
+                "source_documents": source_documents if enable_rag else []
             }
             
         except Exception as e:
@@ -352,6 +372,7 @@ class ConversationalAgent:
                 "iterations": iteration,
                 "execution_time": (datetime.now() - start_time).total_seconds(),
                 "error": str(e),
-                "rag_enabled": self.enable_rag,
-                "source_documents": source_documents if self.enable_rag else []
+                "rag_enabled": enable_rag,
+                "rag_kb_name": kb_name if enable_rag else None,
+                "source_documents": source_documents if enable_rag else []
             }

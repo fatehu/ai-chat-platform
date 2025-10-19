@@ -1,185 +1,454 @@
 """
-RAG 对话测试函数
-确保 Agent 在启用 RAG 时能正确检索知识库内容并进行回答。
-
-依赖于 ConversationClient 类 (来自您之前的测试脚本) 和 RAG API 端点。
+重构后的API使用示例
+展示如何使用新的灵活配置和动态RAG功能
 """
-
 import requests
-import time
-from typing import Dict, Any, List
+import json
 
-# 假设 BASE_URL 和 ConversationClient 已在文件开头定义
 BASE_URL = "http://localhost:8000"
 
-class ConversationClient:
-    """（简化版，仅包含 RAG 测试所需方法）"""
-    def __init__(self, base_url: str = BASE_URL):
-        self.base_url = base_url
-        self.session = requests.Session()
 
-    def create_conversation(
-        self,
-        title: str = "测试对话",
-        model: str = "deepseek-chat",
-        enable_rag: bool = False,
-        kb_name: str = None
-    ) -> str:
-        """创建会话"""
-        response = self.session.post(
-            f"{self.base_url}/api/v1/conversations/",
-            json={
-                "title": title,
-                "model": model,
-                "enable_rag": enable_rag,
-                "kb_name": kb_name,
-                "temperature": 0.7
-            }
-        )
-        response.raise_for_status()
-        data = response.json()
-        session_id = data["session_id"]
-        print(f"✅ 会话已创建: {session_id}")
-        print(f"  标题: {data['title']}")
-        print(f"  模型: {data['model']}")
-        print(f"  启用RAG: {enable_rag}\n")
-        return session_id
+# ============================================================
+# 示例1: 基础会话 - 动态配置模型和参数
+# ============================================================
+
+def example_basic_conversation():
+    """示例：基础会话，每次消息使用不同的配置"""
+    print("\n" + "="*60)
+    print("示例1: 基础会话 - 动态配置")
+    print("="*60)
     
-    def send_message(
-        self,
-        session_id: str,
-        message: str
-    ) -> Dict[str, Any]:
-        """发送消息"""
-        print(f"👤 用户: {message}")
-        response = self.session.post(
-            f"{self.base_url}/api/v1/conversations/{session_id}/messages",
-            json={"message": message}
-        )
-        response.raise_for_status()
-        data = response.json()
-        
-        print(f"🤖 助手: {data['answer']}")
-        print(f"  执行时间: {data['execution_time']:.2f}秒")
-        
-        if data.get('source_documents'):
-            print(f"📚 参考文档 ({len(data['source_documents'])} 条):")
-            # **注意：这里使用了兼容性检查，以解决之前 'content' 或 'document' 的冲突**
-            for doc in data['source_documents']:
-                content = doc.get('content') or doc.get('document') or doc.get('page_content')
-                print(f"    - 内容片段: {content[:80]}...")
-            print()
-            
-        return data
+    # 1. 创建会话（只需要标题）
+    print("\n1. 创建会话...")
+    response = requests.post(f"{BASE_URL}/api/v1/conversations/", json={
+        "title": "Python学习助手"
+    })
+    session_id = response.json()["session_id"]
+    print(f"   会话ID: {session_id}")
+    
+    # 2. 第一条消息：使用默认配置
+    print("\n2. 发送第一条消息（默认配置）...")
+    response = requests.post(
+        f"{BASE_URL}/api/v1/conversations/{session_id}/messages",
+        json={
+            "message": "你好！",
+            "model": "deepseek-chat",
+            "temperature": 0.7
+        }
+    )
+    print(f"   回复: {response.json()['assistant_message']['content'][:50]}...")
+    
+    # 3. 第二条消息：调高温度，获得更有创意的回答
+    print("\n3. 发送第二条消息（高温度）...")
+    response = requests.post(
+        f"{BASE_URL}/api/v1/conversations/{session_id}/messages",
+        json={
+            "message": "给我讲个笑话",
+            "model": "deepseek-chat",
+            "temperature": 0.9  # 更高的温度
+        }
+    )
+    print(f"   回复: {response.json()['assistant_message']['content'][:50]}...")
+    
+    # 4. 第三条消息：降低温度，获得更精确的回答
+    print("\n4. 发送第三条消息（低温度）...")
+    response = requests.post(
+        f"{BASE_URL}/api/v1/conversations/{session_id}/messages",
+        json={
+            "message": "什么是Python？",
+            "model": "deepseek-chat",
+            "temperature": 0.3  # 更低的温度
+        }
+    )
+    print(f"   回复: {response.json()['assistant_message']['content'][:100]}...")
+    
+    print("\n✅ 示例1完成")
 
-    def delete_conversation(self, session_id: str):
-        """删除会话"""
-        self.session.delete(f"{self.base_url}/api/v1/conversations/{session_id}")
-        print(f"🗑️  会话已删除: {session_id}")
+
+# ============================================================
+# 示例2: 动态RAG - 每次消息使用不同的知识库
+# ============================================================
+
+def example_dynamic_rag():
+    """示例：动态RAG，灵活切换知识库"""
+    print("\n" + "="*60)
+    print("示例2: 动态RAG - 灵活切换知识库")
+    print("="*60)
+    
+    # 1. 创建会话
+    print("\n1. 创建会话...")
+    response = requests.post(f"{BASE_URL}/api/v1/conversations/", json={
+        "title": "多语言编程助手"
+    })
+    session_id = response.json()["session_id"]
+    print(f"   会话ID: {session_id}")
+    
+    # 2. 第一条消息：使用Python知识库
+    print("\n2. 使用Python知识库...")
+    response = requests.post(
+        f"{BASE_URL}/api/v1/conversations/{session_id}/messages",
+        json={
+            "message": "Python的装饰器如何使用？",
+            "model": "deepseek-chat",
+            "enable_rag": True,
+            "kb_name": "python_docs",
+            "rag_top_k": 3
+        }
+    )
+    result = response.json()
+    print(f"   回复: {result['assistant_message']['content'][:100]}...")
+    if result.get("rag_info"):
+        print(f"   RAG信息: 找到 {result['rag_info']['documents_found']} 个相关文档")
+    
+    # 3. 第二条消息：切换到Java知识库
+    print("\n3. 切换到Java知识库...")
+    response = requests.post(
+        f"{BASE_URL}/api/v1/conversations/{session_id}/messages",
+        json={
+            "message": "Java的注解和Python的装饰器有什么区别？",
+            "model": "deepseek-chat",
+            "enable_rag": True,
+            "kb_name": "java_docs",  # 不同的知识库
+            "rag_top_k": 3
+        }
+    )
+    result = response.json()
+    print(f"   回复: {result['assistant_message']['content'][:100]}...")
+    if result.get("rag_info"):
+        print(f"   RAG信息: 找到 {result['rag_info']['documents_found']} 个相关文档")
+    
+    # 4. 第三条消息：不使用知识库，直接对话
+    print("\n4. 不使用知识库...")
+    response = requests.post(
+        f"{BASE_URL}/api/v1/conversations/{session_id}/messages",
+        json={
+            "message": "总结一下我们讨论的内容",
+            "model": "deepseek-chat",
+            "enable_rag": False  # 不使用RAG
+        }
+    )
+    result = response.json()
+    print(f"   回复: {result['assistant_message']['content'][:100]}...")
+    
+    print("\n✅ 示例2完成")
+
+
+# ============================================================
+# 示例3: 智能选择RAG - 根据问题类型动态决定
+# ============================================================
+
+def example_smart_rag():
+    """示例：智能选择是否使用RAG"""
+    print("\n" + "="*60)
+    print("示例3: 智能RAG - 根据问题自动选择")
+    print("="*60)
+    
+    def should_use_rag(message):
+        """判断是否需要使用RAG"""
+        knowledge_keywords = ["什么是", "如何", "为什么", "原理", "解释", "定义"]
+        return any(kw in message for kw in knowledge_keywords)
+    
+    def select_kb(message):
+        """智能选择知识库"""
+        message_lower = message.lower()
+        if "python" in message_lower:
+            return "python_docs"
+        elif "java" in message_lower:
+            return "java_docs"
+        elif "算法" in message or "数据结构" in message:
+            return "algorithms"
+        return None
+    
+    # 创建会话
+    print("\n1. 创建会话...")
+    response = requests.post(f"{BASE_URL}/api/v1/conversations/", json={
+        "title": "智能助手"
+    })
+    session_id = response.json()["session_id"]
+    print(f"   会话ID: {session_id}")
+    
+    # 测试不同类型的问题
+    test_questions = [
+        "什么是Python的生成器？",  # 需要RAG + Python知识库
+        "你好，今天天气怎么样？",  # 不需要RAG
+        "Java的多态性原理是什么？",  # 需要RAG + Java知识库
+        "快速排序的时间复杂度是多少？",  # 需要RAG + 算法知识库
+    ]
+    
+    for i, question in enumerate(test_questions, 1):
+        print(f"\n{i}. 问题: {question}")
         
-    def prepare_knowledge_base(self, kb_name: str) -> bool:
-        """创建知识库并添加测试数据"""
-        print(f"🛠️  准备知识库 '{kb_name}'...")
+        # 智能决定是否使用RAG
+        use_rag = should_use_rag(question)
+        kb_name = select_kb(question) if use_rag else None
         
-        # 1. 创建或确保知识库存在 (忽略 400 错误,因为它可能表示已存在)
-        requests.post(
-            f"{BASE_URL}/api/v1/rag/knowledge-bases",
-            json={"kb_name": kb_name, "description": "Agent RAG 测试数据"}
-        )
+        print(f"   决策: RAG={use_rag}, 知识库={kb_name}")
         
-        # 2. 添加测试文本
-        text = """
-            核心产品信息:
-            产品 A: 智能手机,价格2999元,具有高清摄像头。
-            产品 B: 笔记本电脑,价格6999元,用于专业图形处理。
-            产品 C: 智能手表,价格1299元,支持运动追踪和心率监测。
-            
-            技术支持:
-            所有产品享有两年质保。技术支持热线: 400-888-999。
-        """
+        # 发送消息
+        payload = {
+            "message": question,
+            "model": "deepseek-chat",
+            "enable_rag": use_rag
+        }
+        
+        if use_rag and kb_name:
+            payload["kb_name"] = kb_name
+            payload["rag_top_k"] = 3
         
         response = requests.post(
-            f"{BASE_URL}/api/v1/rag/add-text",
+            f"{BASE_URL}/api/v1/conversations/{session_id}/messages",
+            json=payload
+        )
+        
+        result = response.json()
+        print(f"   回复: {result['assistant_message']['content'][:80]}...")
+    
+    print("\n✅ 示例3完成")
+
+
+# ============================================================
+# 示例4: Agent + 动态RAG
+# ============================================================
+
+def example_agent_with_rag():
+    """示例：Agent模式配合动态RAG"""
+    print("\n" + "="*60)
+    print("示例4: Agent + 动态RAG")
+    print("="*60)
+    
+    # 1. 创建会话
+    print("\n1. 创建会话...")
+    response = requests.post(f"{BASE_URL}/api/v1/conversations/", json={
+        "title": "Agent助手"
+    })
+    session_id = response.json()["session_id"]
+    print(f"   会话ID: {session_id}")
+    
+    # 2. Agent查询 + Python知识库
+    print("\n2. Agent查询（使用Python知识库）...")
+    response = requests.post(
+        f"{BASE_URL}/api/v1/agent/conversation/{session_id}/query",
+        json={
+            "message": "帮我用Python写一个快速排序，并执行测试",
+            "model": "deepseek-chat",
+            "max_iterations": 10,
+            "enable_tools": ["python_repl"],
+            "enable_rag": True,
+            "kb_name": "python_docs",
+            "rag_top_k": 5
+        }
+    )
+    
+    result = response.json()
+    print(f"   执行步骤: {result['iterations']} 步")
+    print(f"   执行时间: {result['execution_time']:.2f}秒")
+    print(f"   RAG: {result['rag_enabled']}, 知识库: {result.get('rag_kb_name')}")
+    print(f"   回复: {result['answer'][:100]}...")
+    
+    # 3. Agent查询（不使用RAG）
+    print("\n3. Agent查询（不使用RAG）...")
+    response = requests.post(
+        f"{BASE_URL}/api/v1/agent/conversation/{session_id}/query",
+        json={
+            "message": "现在几点了？",
+            "model": "deepseek-chat",
+            "enable_tools": ["get_current_time"],
+            "enable_rag": False  # 不需要RAG
+        }
+    )
+    
+    result = response.json()
+    print(f"   执行步骤: {result['iterations']} 步")
+    print(f"   回复: {result['answer'][:100]}...")
+    
+    # 4. Agent查询（切换到算法知识库）
+    print("\n4. Agent查询（切换到算法知识库）...")
+    response = requests.post(
+        f"{BASE_URL}/api/v1/agent/conversation/{session_id}/query",
+        json={
+            "message": "分析一下快速排序的时间复杂度，并用计算器验证",
+            "model": "deepseek-chat",
+            "enable_tools": ["calculator"],
+            "enable_rag": True,
+            "kb_name": "algorithms",  # 不同的知识库
+            "rag_top_k": 3
+        }
+    )
+    
+    result = response.json()
+    print(f"   执行步骤: {result['iterations']} 步")
+    print(f"   RAG: {result['rag_enabled']}, 知识库: {result.get('rag_kb_name')}")
+    print(f"   回复: {result['answer'][:100]}...")
+    
+    print("\n✅ 示例4完成")
+
+
+# ============================================================
+# 示例5: 模型切换 - 不同问题使用不同模型
+# ============================================================
+
+def example_model_switching():
+    """示例：根据问题复杂度切换模型"""
+    print("\n" + "="*60)
+    print("示例5: 智能模型切换")
+    print("="*60)
+    
+    # 创建会话
+    print("\n1. 创建会话...")
+    response = requests.post(f"{BASE_URL}/api/v1/conversations/", json={
+        "title": "智能模型切换"
+    })
+    session_id = response.json()["session_id"]
+    print(f"   会话ID: {session_id}")
+    
+    # 2. 简单问题 - 使用快速模型
+    print("\n2. 简单问题（使用gpt-3.5-turbo）...")
+    response = requests.post(
+        f"{BASE_URL}/api/v1/conversations/{session_id}/messages",
+        json={
+            "message": "你好",
+            "model": "gpt-3.5-turbo",
+            "temperature": 0.7
+        }
+    )
+    print(f"   模型: gpt-3.5-turbo")
+    print(f"   回复: {response.json()['assistant_message']['content'][:50]}...")
+    
+    # 3. 复杂问题 - 使用强大模型
+    print("\n3. 复杂问题（使用gpt-4-turbo-preview）...")
+    response = requests.post(
+        f"{BASE_URL}/api/v1/conversations/{session_id}/messages",
+        json={
+            "message": "请详细解释量子计算的原理，并分析其在密码学中的应用",
+            "model": "gpt-4-turbo-preview",
+            "temperature": 0.3,
+            "max_tokens": 3000
+        }
+    )
+    print(f"   模型: gpt-4-turbo-preview")
+    print(f"   回复: {response.json()['assistant_message']['content'][:100]}...")
+    
+    # 4. 代码相关 - 使用DeepSeek
+    print("\n4. 代码问题（使用deepseek-chat）...")
+    response = requests.post(
+        f"{BASE_URL}/api/v1/conversations/{session_id}/messages",
+        json={
+            "message": "写一个Python函数实现二分查找",
+            "model": "deepseek-chat",
+            "temperature": 0.2,
+            "enable_rag": True,
+            "kb_name": "python_docs"
+        }
+    )
+    print(f"   模型: deepseek-chat")
+    print(f"   回复: {response.json()['assistant_message']['content'][:100]}...")
+    
+    print("\n✅ 示例5完成")
+
+
+# ============================================================
+# 示例6: 查看会话统计信息
+# ============================================================
+
+def example_conversation_stats():
+    """示例：查看会话的统计信息"""
+    print("\n" + "="*60)
+    print("示例6: 会话统计信息")
+    print("="*60)
+    
+    # 创建会话并发送几条消息
+    print("\n1. 创建会话并发送消息...")
+    response = requests.post(f"{BASE_URL}/api/v1/conversations/", json={
+        "title": "多模态测试"
+    })
+    session_id = response.json()["session_id"]
+    
+    # 发送几条不同配置的消息
+    messages = [
+        {"message": "Python是什么？", "enable_rag": True, "kb_name": "python_docs"},
+        {"message": "Java是什么？", "enable_rag": True, "kb_name": "java_docs"},
+        {"message": "你好", "enable_rag": False}
+    ]
+    
+    for msg in messages:
+        requests.post(
+            f"{BASE_URL}/api/v1/conversations/{session_id}/messages",
             json={
-                "kb_name": kb_name,
-                "text": text,
-                "metadata": {"source": "test_script_data"}
+                "message": msg["message"],
+                "model": "deepseek-chat",
+                "enable_rag": msg.get("enable_rag", False),
+                "kb_name": msg.get("kb_name")
             }
         )
-        
-        if response.status_code != 200:
-            print(f"❌ 添加知识库文本失败: {response.text}")
-            return False
-            
-        print("✅ 知识库准备完成\n")
-        return True
     
-    def cleanup_knowledge_base(self, kb_name: str):
-        """删除测试知识库"""
-        requests.delete(f"{BASE_URL}/api/v1/rag/knowledge-bases/{kb_name}")
-        print(f"🧹 知识库 '{kb_name}' 已清理\n")
+    # 2. 获取会话统计信息
+    print("\n2. 查看会话统计...")
+    response = requests.get(f"{BASE_URL}/api/v1/conversations/{session_id}")
+    stats = response.json()
+    
+    print(f"\n会话信息:")
+    print(f"   标题: {stats['title']}")
+    print(f"   会话ID: {stats['session_id']}")
+    print(f"   创建时间: {stats['created_at']}")
+    print(f"\n统计信息:")
+    print(f"   总消息数: {stats['statistics']['total_messages']}")
+    print(f"   用户消息: {stats['statistics']['user_messages']}")
+    print(f"   助手回复: {stats['statistics']['assistant_messages']}")
+    print(f"   使用的模型: {stats['statistics']['models_used']}")
+    print(f"   RAG使用次数: {stats['statistics']['rag_enabled_count']}")
+    print(f"   使用的知识库: {stats['statistics']['knowledge_bases_used']}")
+    
+    print("\n✅ 示例6完成")
 
-    
-def test_rag_conversation():
-    """测试 Agent 启用 RAG 后的对话能力"""
-    TEST_KB_NAME = "agent_test_kb"
-    client = ConversationClient()
-    
-    print("=" * 60)
-    print("测试: Agent RAG 对话能力")
-    print("=" * 60)
+
+# ============================================================
+# 主函数
+# ============================================================
+
+def main():
+    """运行所有示例"""
+    print("\n🚀 重构后的API使用示例")
+    print("="*60)
     
     try:
-        # 1. 准备知识库
-        if not client.prepare_knowledge_base(TEST_KB_NAME):
+        # 检查服务是否运行
+        response = requests.get(f"{BASE_URL}/health")
+        if response.status_code != 200:
+            print("❌ 服务未运行，请先启动API服务")
             return
-
-        # 2. 创建启用 RAG 的会话
-        session_id = client.create_conversation(
-            title="RAG Agent 测试",
-            enable_rag=True,
-            kb_name=TEST_KB_NAME
-        )
         
-        # 3. 发送需要 RAG 的问题
-        user_query = "产品B的主要特点和价格是多少?"
-        result = client.send_message(session_id, user_query)
+        print("✅ API服务正常运行")
         
-        # 4. 验证结果
-        final_answer = result['answer']
-        source_docs = result.get('source_documents', [])
-
-        is_passed = True
+        # 运行示例
+        examples = [
+            ("基础会话 - 动态配置", example_basic_conversation),
+            ("动态RAG - 灵活切换知识库", example_dynamic_rag),
+            ("智能RAG - 自动选择", example_smart_rag),
+            ("Agent + 动态RAG", example_agent_with_rag),
+            ("智能模型切换", example_model_switching),
+            ("会话统计信息", example_conversation_stats)
+        ]
         
-        if "6999" not in final_answer and "笔记本电脑" not in final_answer:
-            print("❌ 验证失败: 答案未提及产品B的关键信息（价格/类型）")
-            is_passed = False
+        for i, (name, func) in enumerate(examples, 1):
+            print(f"\n{'='*60}")
+            print(f"运行示例 {i}/{len(examples)}: {name}")
+            print(f"{'='*60}")
             
-        if not source_docs or len(source_docs) == 0:
-            print("❌ 验证失败: 未返回任何参考文档")
-            is_passed = False
+            try:
+                func()
+            except Exception as e:
+                print(f"❌ 示例执行失败: {str(e)}")
             
-        # 清理
-        client.delete_conversation(session_id)
+            input("\n按Enter继续...")
         
-        if is_passed:
-            print("✅ RAG Agent 对话 - 通过\n")
-            return True
-        else:
-            print("❌ RAG Agent 对话 - 失败\n")
-            return False
-
-    except requests.exceptions.HTTPError as e:
-        print(f"❌ 测试失败: 发生 HTTP 错误: {e}")
-        print(f"错误详情: {e.response.text}")
-        return False
-    except Exception as e:
-        print(f"❌ 测试失败: 发生未知错误: {str(e)}")
-        return False
-    finally:
-        # 确保清理知识库 (可选，但推荐)
-        client.cleanup_knowledge_base(TEST_KB_NAME)
+        print("\n" + "="*60)
+        print("✅ 所有示例运行完成！")
+        print("="*60)
+        
+    except requests.exceptions.ConnectionError:
+        print("❌ 无法连接到API服务，请确保服务已启动")
+        print(f"   URL: {BASE_URL}")
 
 
 if __name__ == "__main__":
-    test_rag_conversation()
+    main()
