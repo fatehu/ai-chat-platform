@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 from datetime import datetime, timedelta
 import httpx
 from .tool_base import Tool, ToolOutput, ToolCategory
+from bs4 import BeautifulSoup
 
 
 class WeatherTool(Tool):
@@ -446,3 +447,83 @@ class UnitConverterTool(Tool):
             return celsius + 273.15
         else:
             return None
+        
+class WebBrowserTool(Tool):
+    """
+    网页浏览器工具 - 访问URL并提取干净的文本内容
+    """
+    
+    def _get_name(self) -> str:
+        return "browse_webpage"
+    
+    def _get_description(self) -> str:
+        return "访问指定的URL并提取其主要文本内容。用于在'web_search'找到链接后，深入阅读页面。只返回文本，忽略HTML标签。"
+    
+    def _get_category(self) -> ToolCategory:
+        return ToolCategory.WEB_SCRAPING
+    
+    def _get_parameters(self) -> Dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "要访问的完整URL"
+                }
+            },
+            "required": ["url"]
+        }
+    
+    async def _execute(self, url: str) -> ToolOutput:
+        """执行网页浏览和内容提取"""
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            }
+            
+            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+                response = await client.get(url, headers=headers)
+                
+                if response.status_code == 200:
+                    # 使用 BeautifulSoup 解析 HTML
+                    soup = BeautifulSoup(response.text, "lxml")
+                    
+                    # 移除脚本和样式标签
+                    for script_or_style in soup(["script", "style", "nav", "footer", "aside"]):
+                        script_or_style.decompose()
+                    
+                    # 获取文本并清理
+                    text = soup.get_text()
+                    lines = (line.strip() for line in text.splitlines())
+                    chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+                    clean_text = '\n'.join(chunk for chunk in chunks if chunk)
+                    
+                    # 限制返回的内容长度，避免超出LLM上下文
+                    MAX_LENGTH = 4000
+                    if len(clean_text) > MAX_LENGTH:
+                        truncated_text = clean_text[:MAX_LENGTH] + "\n... (内容已截断)"
+                    else:
+                        truncated_text = clean_text
+                    
+                    return ToolOutput(
+                        success=True,
+                        result={
+                            "url": url,
+                            "content": truncated_text,
+                            "original_length": len(clean_text)
+                        },
+                        metadata={"source": url, "status_code": 200}
+                    )
+                else:
+                    return ToolOutput(
+                        success=False,
+                        result=None,
+                        error=f"访问URL失败，HTTP状态码: {response.status_code}"
+                    )
+                    
+        except Exception as e:
+            return ToolOutput(
+                success=False,
+                result=None,
+                error=f"浏览网页时发生异常: {str(e)}"
+            )

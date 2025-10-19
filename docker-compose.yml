@@ -73,7 +73,7 @@ services:
       - CHROMA_PORT=8000
 
       # 外部api
-      - SERPER_API_KEY=988d59aaa1947341ce512bb90cbedaae8c465971
+      - SERPER_API_KEY=${SERPER_API_KEY}
     volumes:
       - ./app:/app/app
       - ./agent_tmp:/tmp

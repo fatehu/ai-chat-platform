@@ -16,3 +16,7 @@ numpy==1.26.4
 sqlalchemy==2.0.25
 psycopg2-binary==2.9.9
 alembic==1.13.1
+
+# 网页抓取相关依赖
+beautifulsoup4==4.12.3
+lxml==5.2.2

@@ -22,6 +22,7 @@ from ..agent.advanced_tools import (
     TextAnalysisTool,
     JSONParserTool,
     TimerTool,
+    WebBrowserTool,
     UnitConverterTool
 )
 
@@ -151,10 +152,10 @@ def get_available_tools() -> Dict[str, Any]:
     
     工具分类：
     - 基础工具 (5个): 计算、时间、代码执行、搜索、知识库
-    - 高级工具 (5个): 天气、文本分析、JSON解析、时间计算、单位转换
+    - 高级工具 (6个): 天气、文本分析、JSON解析、时间计算、单位转换、网页浏览
     - 扩展工具 (11个): 文件操作、数据处理、网络请求、实用工具
     
-    总计: 21个工具
+    总计: 22个工具
     """
     rag_service = get_rag_service()
     
@@ -176,6 +177,7 @@ def get_available_tools() -> Dict[str, Any]:
         "parse_json": JSONParserTool(),
         "time_calculator": TimerTool(),
         "convert_unit": UnitConverterTool(),
+        "browse_webpage": WebBrowserTool(),
         
         # ============================================================
         # 扩展工具 - 文件操作 (Extended Tools - File Operations)

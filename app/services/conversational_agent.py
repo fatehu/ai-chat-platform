@@ -277,59 +277,70 @@ class ConversationalAgent:
                 
                 # 检查是否有工具调用
                 if assistant_message.get("tool_calls"):
-                    tool_call = assistant_message["tool_calls"][0]
-                    function_name = tool_call["function"]["name"]
-                    function_args = json.loads(tool_call["function"]["arguments"])
                     
-                    if self.verbose:
-                        print(f"🔧 调用工具: {function_name}")
-                        print(f"参数: {function_args}")
+                    # 关键修改：首先将LLM的回复（包含所有工具调用请求）添加到历史
+                    messages.append(assistant_message)
                     
-                    # 记录步骤
-                    steps.append({
-                        "iteration": iteration,
-                        "action": function_name,
-                        "input": function_args,
-                        "timestamp": datetime.now().isoformat()
-                    })
+                    # 关键修改：遍历所有工具调用
+                    tool_calls = assistant_message["tool_calls"]
                     
-                    # 检查是否是结束函数
-                    if function_name == "finish":
-                        final_answer = function_args.get("answer", "")
+                    for tool_call in tool_calls:
+                        function_name = tool_call["function"]["name"]
+                        function_args = json.loads(tool_call["function"]["arguments"])
                         
                         if self.verbose:
-                            print(f"✅ 最终答案: {final_answer}\n")
+                            print(f"🔧 调用工具: {function_name}")
+                            print(f"参数: {function_args}")
                         
-                        return {
-                            "success": True,
-                            "answer": final_answer,
-                            "steps": steps,
-                            "iterations": iteration,
-                            "execution_time": (datetime.now() - start_time).total_seconds(),
-                            "rag_enabled": enable_rag,
-                            "rag_kb_name": kb_name if enable_rag else None,
-                            "source_documents": source_documents if enable_rag else [],
-                            "messages_to_save": [
-                                {"role": "assistant", "content": final_answer}
-                            ]
-                        }
-                    
-                    # 执行工具
-                    observation = await self._execute_tool(function_name, function_args)
-                    
-                    if self.verbose:
-                        print(f"📝 观察: {observation}\n")
-                    
-                    steps[-1]["observation"] = observation
-                    
-                    # 将工具调用和结果添加到消息历史
-                    messages.append(assistant_message)
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call["id"],
-                        "content": observation
-                    })
-                    
+                        # 记录步骤
+                        steps.append({
+                            "iteration": iteration,
+                            "action": function_name,
+                            "input": function_args,
+                            "timestamp": datetime.now().isoformat()
+                        })
+                        
+                        # 检查是否是结束函数
+                        if function_name == "finish":
+                            final_answer = function_args.get("answer", "")
+                            
+                            if self.verbose:
+                                print(f"✅ 最终答案: {final_answer}\n")
+                            
+                            # 注意：一旦遇到 finish，立即返回
+                            return {
+                                "success": True,
+                                "answer": final_answer,
+                                "steps": steps,
+                                "iterations": iteration,
+                                "execution_time": (datetime.now() - start_time).total_seconds(),
+                                "rag_enabled": enable_rag,
+                                "rag_kb_name": kb_name if enable_rag else None,
+                                "source_documents": source_documents if enable_rag else [],
+                                "messages_to_save": [
+                                    {"role": "assistant", "content": final_answer}
+                                ]
+                            }
+                        
+                        # 执行工具
+                        observation = await self._execute_tool(function_name, function_args)
+                        
+                        if self.verbose:
+                            print(f"📝 观察: {observation}\n")
+                        
+                        # 假设 steps 列表是按顺序添加的，取最后一个
+                        if steps:
+                            steps[-1]["observation"] = observation
+                        
+                        # 关键修改：将 *当前工具* 的结果添加到消息历史
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call["id"],
+                            "content": observation
+                        })
+                        
+                    # 循环结束后，进入下一次迭代
+
                 else:
                     # LLM直接回答
                     answer = assistant_message.get("content", "")

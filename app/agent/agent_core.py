@@ -246,60 +246,69 @@ class ReactAgent:
                 
                 # 检查是否有工具调用
                 if assistant_message.get("tool_calls"):
-                    tool_call = assistant_message["tool_calls"][0]
-                    function_name = tool_call["function"]["name"]
-                    function_args = json.loads(tool_call["function"]["arguments"])
                     
-                    if self.config.verbose:
-                        print(f"思考: 我需要使用工具 '{function_name}'")
-                        print(f"参数: {function_args}")
+                    # 关键修改：首先将LLM的回复（包含所有工具调用请求）添加到历史
+                    messages.append(assistant_message)
                     
-                    # 检查是否是结束函数
-                    if function_name == "finish":
-                        final_answer = function_args.get("answer", "")
+                    # 关键修改：遍历所有工具调用，而不是只取第一个
+                    tool_calls = assistant_message["tool_calls"]
+                    
+                    for tool_call in tool_calls:
+                        function_name = tool_call["function"]["name"]
+                        function_args = json.loads(tool_call["function"]["arguments"])
                         
+                        if self.config.verbose:
+                            print(f"思考: 我需要使用工具 '{function_name}'")
+                            print(f"参数: {function_args}")
+                        
+                        # 检查是否是结束函数
+                        if function_name == "finish":
+                            final_answer = function_args.get("answer", "")
+                            
+                            self.steps.append(AgentStep(
+                                thought="我已经得出最终答案",
+                                action="finish",
+                                action_input={"answer": final_answer},
+                                observation=None,
+                                timestamp=datetime.now().isoformat()
+                            ))
+                            
+                            if self.config.verbose:
+                                print(f"✓ 最终答案: {final_answer}\n")
+                            
+                            # 注意：一旦遇到 finish，我们假设任务结束，即使它与其他工具并发
+                            return {
+                                "success": True,
+                                "answer": final_answer,
+                                "steps": [step.dict() for step in self.steps],
+                                "iterations": iteration,
+                                "execution_time": (datetime.now() - start_time).total_seconds()
+                            }
+                        
+                        # 执行工具
+                        observation = await self._execute_tool(function_name, function_args)
+                        
+                        if self.config.verbose:
+                            print(f"观察: {observation}\n")
+                        
+                        # 记录步骤
                         self.steps.append(AgentStep(
-                            thought="我已经得出最终答案",
-                            action="finish",
-                            action_input={"answer": final_answer},
-                            observation=None,
+                            thought=f"使用工具 {function_name}",
+                            action=function_name,
+                            action_input=function_args,
+                            observation=observation,
                             timestamp=datetime.now().isoformat()
                         ))
                         
-                        if self.config.verbose:
-                            print(f"✓ 最终答案: {final_answer}\n")
-                        
-                        return {
-                            "success": True,
-                            "answer": final_answer,
-                            "steps": [step.dict() for step in self.steps],
-                            "iterations": iteration,
-                            "execution_time": (datetime.now() - start_time).total_seconds()
-                        }
+                        # 关键修改：将 *当前工具* 的结果添加到消息历史
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call["id"],
+                            "content": observation
+                        })
                     
-                    # 执行工具
-                    observation = await self._execute_tool(function_name, function_args)
-                    
-                    if self.config.verbose:
-                        print(f"观察: {observation}\n")
-                    
-                    # 记录步骤
-                    self.steps.append(AgentStep(
-                        thought=f"使用工具 {function_name}",
-                        action=function_name,
-                        action_input=function_args,
-                        observation=observation,
-                        timestamp=datetime.now().isoformat()
-                    ))
-                    
-                    # 将工具结果添加到消息历史
-                    messages.append(assistant_message)
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call["id"],
-                        "content": observation
-                    })
-                    
+                    # 循环结束后，进入下一次迭代
+
                 else:
                     # LLM直接回答（未使用Function Calling）
                     answer = assistant_message.get("content", "")
