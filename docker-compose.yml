@@ -25,7 +25,7 @@ services:
   # ChromaDB 服务配置
   # ===============================================
   chroma:
-    image: chromadb/chroma:latest
+    image: chromadb/chroma:0.5.5
     container_name: chroma-server
     ports:
       - "8002:8000"

@@ -7,6 +7,11 @@ from typing import List, Dict, Optional, Any
 import uuid
 from datetime import datetime
 import hashlib
+import os
+
+# 从环境变量中获取 ChromaDB 连接信息
+CHROMA_HOST = os.getenv("CHROMA_HOST")
+CHROMA_PORT = os.getenv("CHROMA_PORT")
 
 
 class VectorStoreService:
@@ -19,13 +24,27 @@ class VectorStoreService:
         Args:
             persist_directory: 数据持久化目录
         """
-        self.client = chromadb.PersistentClient(
-            path=persist_directory,
-            settings=Settings(
-                anonymized_telemetry=False,
-                allow_reset=True
+        if CHROMA_HOST and CHROMA_PORT:
+            self.client = chromadb.HttpClient(
+                host=CHROMA_HOST,
+                port=int(CHROMA_PORT),
+                settings=Settings(
+                    anonymized_telemetry=False,
+                    allow_reset=True
+                )
             )
-        )
+
+        else:
+            # 否则，使用本地持久化客户端（作为回退）
+            self.client = chromadb.PersistentClient(
+                path=persist_directory,
+                settings=Settings(
+                    anonymized_telemetry=False,
+                    allow_reset=True
+                )
+            )
+            print(f"✓ VectorStoreService: Using local persistent client at {persist_directory}")
+    
     
     def create_collection(
         self, 
@@ -34,18 +53,18 @@ class VectorStoreService:
     ) -> None:
         """
         创建向量集合
-        
-        Args:
-            collection_name: 集合名称
-            metadata: 集合元数据（如文件信息）
         """
         try:
             # 检查集合是否已存在
             try:
                 self.client.get_collection(name=collection_name)
                 raise ValueError(f"集合 '{collection_name}' 已存在")
-            except Exception:
-                pass
+            except Exception as e:
+                # 集合不存在是正常情况，继续创建。
+                if "Collection " in str(e) and " does not exist" in str(e):
+                    pass
+                else:
+                    pass
             
             # 创建新集合
             self.client.create_collection(
@@ -62,12 +81,6 @@ class VectorStoreService:
     def get_collection(self, collection_name: str):
         """
         获取集合
-        
-        Args:
-            collection_name: 集合名称
-            
-        Returns:
-            Collection 对象
         """
         try:
             return self.client.get_collection(name=collection_name)
@@ -77,9 +90,6 @@ class VectorStoreService:
     def list_collections(self) -> List[Dict[str, Any]]:
         """
         列出所有集合
-        
-        Returns:
-            集合信息列表
         """
         try:
             collections = self.client.list_collections()
@@ -104,34 +114,18 @@ class VectorStoreService:
     ) -> List[str]:
         """
         向集合添加文档
-        
-        Args:
-            collection_name: 集合名称
-            documents: 文档文本列表
-            embeddings: 向量列表
-            metadatas: 元数据列表
-            ids: 文档ID列表（如不提供则自动生成）
-            
-        Returns:
-            文档ID列表
         """
         try:
             collection = self.get_collection(collection_name)
             
             # 生成ID
             if ids is None:
-                # ids = [str(uuid.uuid4()) for _ in documents]
                 generated_ids = []
                 for i, doc_content in enumerate(documents):
-                    # 尝试从元数据获取文件名和块索引，提供默认值以确保稳定性
                     metadata = metadatas[i] if metadatas and i < len(metadatas) else {}
                     filename = metadata.get("filename", "unknown_file")
                     chunk_index = metadata.get("chunk_index", i)
-                    
-                    # 创建一个用于哈希的唯一字符串
                     unique_string_for_hash = f"{filename}-{chunk_index}-{doc_content}"
-                    
-                    # 使用 SHA256 生成一个固定的哈希值作为ID
                     doc_id = hashlib.sha256(unique_string_for_hash.encode('utf-8')).hexdigest()
                     generated_ids.append(doc_id)
                 ids = generated_ids
@@ -161,15 +155,6 @@ class VectorStoreService:
     ) -> Dict[str, Any]:
         """
         查询相似文档
-        
-        Args:
-            collection_name: 集合名称
-            query_embedding: 查询向量
-            n_results: 返回结果数量
-            where: 过滤条件
-            
-        Returns:
-            查询结果
         """
         try:
             collection = self.get_collection(collection_name)
@@ -201,9 +186,6 @@ class VectorStoreService:
     def delete_collection(self, collection_name: str) -> None:
         """
         删除集合
-        
-        Args:
-            collection_name: 集合名称
         """
         try:
             self.client.delete_collection(name=collection_name)
@@ -213,12 +195,6 @@ class VectorStoreService:
     def get_collection_info(self, collection_name: str) -> Dict[str, Any]:
         """
         获取集合详细信息
-        
-        Args:
-            collection_name: 集合名称
-            
-        Returns:
-            集合信息
         """
         try:
             collection = self.get_collection(collection_name)

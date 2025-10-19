@@ -49,6 +49,22 @@ MODEL_CONFIGS = {
         "api_key": os.getenv("DEEPSEEK_API_KEY"),
         "base_url": os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1/chat/completions"),
         "vendor": "DeepSeek"
+    },
+    # DashScope 模型配置 (Qwen系列)
+    "qwen-turbo": {
+        "api_key": os.getenv("DASHSCOPE_API_KEY"),
+        "base_url": os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+        "vendor": "DashScope"
+    },
+    "qwen-plus": {
+        "api_key": os.getenv("DASHSCOPE_API_KEY"),
+        "base_url": os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+        "vendor": "DashScope"
+    },
+    "qwen-max": {
+        "api_key": os.getenv("DASHSCOPE_API_KEY"),
+        "base_url": os.getenv("DASHSCOPE_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+        "vendor": "DashScope"
     }
 }
 

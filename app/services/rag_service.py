@@ -119,14 +119,6 @@ class RAGService:
                 metadatas=metadatas
             )
             
-            # 5. 存储到向量数据库
-            doc_ids = self.vector_store.add_documents(
-                collection_name=kb_name,
-                documents=texts,
-                embeddings=all_embeddings, # 使用分批生成的完整向量列表
-                metadatas=metadatas
-            )
-            
             return {
                 "success": True,
                 "kb_name": kb_name,
