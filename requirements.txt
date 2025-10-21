@@ -20,3 +20,7 @@ alembic==1.13.1
 # 网页抓取相关依赖
 beautifulsoup4==4.12.3
 lxml==5.2.2
+
+# PaperSearch 依赖
+scikit-learn==1.3.2 
+sentence-transformers==2.7.0

@@ -40,6 +40,13 @@ from ..agent.extended_tools import (
     EmailSenderTool
 )
 
+from ..agent.paper_crawl_tool import PaperCrawlTool
+from ..agent.rag_tools import (
+    RAGManagementTool, 
+    RAGDocumentUploadTool,
+    RAGSearchTool
+)
+
 from ..services.rag_service import get_rag_service
 from ..database.database import get_db
 from ..database.conversation_service import ConversationService
@@ -60,7 +67,7 @@ class AgentQueryRequest(BaseModel):
     max_iterations: int = 100
     verbose: bool = True
     enable_tools: Optional[List[str]] = None
-    # 新增：RAG配置
+    # RAG配置
     enable_rag: bool = False
     kb_name: Optional[str] = None
     rag_top_k: int = 3
@@ -164,11 +171,12 @@ def get_available_tools() -> Dict[str, Any]:
     获取所有可用工具
     
     工具分类：
-    - 基础工具 (5个): 计算、时间、代码执行、搜索、知识库
+    - 基础工具 (4个): 计算、时间、代码执行、搜索
     - 高级工具 (6个): 天气、文本分析、JSON解析、时间计算、单位转换、网页浏览
     - 扩展工具 (12个): 文件操作、数据处理、网络请求、实用工具、发送邮件
+    - 知识库工具 + 论文爬取 (3个): RAG管理、文档上传、论文摘要爬取
     
-    总计: 23个工具
+    总计: 25个工具
     """
     rag_service = get_rag_service()
     
@@ -180,7 +188,7 @@ def get_available_tools() -> Dict[str, Any]:
         "get_current_time": DateTimeTool(),
         "python_repl": PythonREPLTool(),
         "web_search": WebSearchTool(),
-        "knowledge_base_search": KnowledgeBaseTool(rag_service=rag_service),
+        "knowledge_base_search": RAGSearchTool(rag_service=rag_service),
         
         # ============================================================
         # 高级工具 (Advanced Tools)
@@ -218,6 +226,13 @@ def get_available_tools() -> Dict[str, Any]:
         "encode_decode": EncodingTool(),
         "validate_email": EmailValidatorTool(),
         "send_email": EmailSenderTool(),
+
+        # ============================================================
+        # 论文爬取和RAG管理
+        # ============================================================
+        "crawl_paper_abstracts": PaperCrawlTool(),               # 爬取论文
+        "manage_knowledge_base": RAGManagementTool(),           # KB CRUD/文本注入
+        "upload_rag_document": RAGDocumentUploadTool(),
     }
     
     return tools

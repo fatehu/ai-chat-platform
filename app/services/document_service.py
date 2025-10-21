@@ -6,7 +6,8 @@ from typing import List, Dict, Any
 from pathlib import Path
 import pypdf
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-
+import re
+import json
 
 class DocumentService:
     """文档处理服务"""
@@ -117,6 +118,55 @@ class DocumentService:
             return chunks
         except Exception as e:
             raise Exception(f"分割文本失败: {str(e)}")
+    def _process_markdown_with_metadata(
+        self, 
+        text: str, 
+        base_metadata: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """处理带有内嵌元数据标记的 Markdown 文件"""
+        
+        documents = []
+        # 定义匹配 <metadata_json_start>...<metadata_json_end> 及其后续内容的正则表达式
+        pattern = re.compile(r'<metadata_json_start>(.*?)\s*<metadata_json_end>\s*(.*?)((?=<metadata_json_start>)|$)', re.DOTALL)
+        
+        matches = list(pattern.finditer(text))
+        
+        if not matches:
+            # 如果没有匹配到标记，则将整个文件作为一个文档处理
+            chunks = self.split_text(text)
+            for i, chunk in enumerate(chunks):
+                 doc_metadata = base_metadata.copy()
+                 doc_metadata.update({"chunk_index": i, "total_chunks": len(chunks)})
+                 documents.append({"text": chunk, "metadata": doc_metadata})
+            return documents
+
+        for match in matches:
+            json_str = match.group(1).strip()
+            content = match.group(2).strip()
+            
+            try:
+                doc_metadata = json.loads(json_str)
+            except json.JSONDecodeError:
+                doc_metadata = {}
+
+            # 将内容分块
+            chunks = self.split_text(content)
+            
+            # 为每个块附加元数据
+            for i, chunk in enumerate(chunks):
+                final_metadata = base_metadata.copy()
+                final_metadata.update(doc_metadata) # 包含 original_title, original_url 等信息
+                final_metadata.update({
+                    "chunk_index": i,
+                    "total_chunks": len(chunks)
+                })
+                
+                documents.append({
+                    "text": chunk,
+                    "metadata": final_metadata
+                })
+
+        return documents
     
     def process_document(
         self, 
@@ -136,7 +186,22 @@ class DocumentService:
             处理后的文档块列表，每个块包含 text 和 metadata
         """
         try:
-            # 提取文本
+            # --- 关键修改：处理 MD 文件时调用特殊解析器 ---
+            base_metadata = {
+                "file_path": file_path,
+                "file_type": file_type,
+            }
+            if metadata:
+                base_metadata.update(metadata)
+
+            if file_type.lower() == "md":
+                # 对于 Markdown 文件，先提取文本
+                text = self.extract_text_from_txt(file_path)
+                # 使用专门的解析器处理内嵌元数据
+                documents = self._process_markdown_with_metadata(text, base_metadata)
+                return documents
+            
+            # 提取文本 (PDF, TXT)
             text = self.extract_text(file_path, file_type)
             
             # 分割文本

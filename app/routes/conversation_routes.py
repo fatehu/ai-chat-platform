@@ -56,7 +56,7 @@ class SendMessageRequest(BaseModel):
     
     # Agent配置（可选）
     enable_agent: Optional[bool] = False
-    agent_max_iterations: Optional[int] = 10
+    agent_max_iterations: Optional[int] = 100
     agent_enable_tools: Optional[List[str]] = None
 
 
