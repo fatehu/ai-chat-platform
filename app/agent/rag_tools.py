@@ -188,8 +188,8 @@ class RAGSearchTool(Tool):
             for item in result.get("results", []):
                 # 限制内容长度，但确保元数据完整
                 content_snippet = item.get("document", "")
-                if len(content_snippet) > 500:
-                    content_snippet = content_snippet[:500] + "..."
+                # if len(content_snippet) > 500:
+                    # content_snippet = content_snippet[:500] + "..."
                     
                 documents.append({
                     "content_snippet": content_snippet,

@@ -118,55 +118,56 @@ class DocumentService:
             return chunks
         except Exception as e:
             raise Exception(f"分割文本失败: {str(e)}")
+
     def _process_markdown_with_metadata(
         self, 
         text: str, 
         base_metadata: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        """处理带有内嵌元数据标记的 Markdown 文件"""
+        """
+        处理带有内嵌元数据标记的 Markdown 文件（来自爬取工具），并确保一篇论文只作为一个块
+        如果未检测到标记，返回空列表。
+        """
         
         documents = []
         # 定义匹配 <metadata_json_start>...<metadata_json_end> 及其后续内容的正则表达式
+        # re.DOTALL 确保 . 匹配换行符
         pattern = re.compile(r'<metadata_json_start>(.*?)\s*<metadata_json_end>\s*(.*?)((?=<metadata_json_start>)|$)', re.DOTALL)
         
         matches = list(pattern.finditer(text))
         
         if not matches:
-            # 如果没有匹配到标记，则将整个文件作为一个文档处理
-            chunks = self.split_text(text)
-            for i, chunk in enumerate(chunks):
-                 doc_metadata = base_metadata.copy()
-                 doc_metadata.update({"chunk_index": i, "total_chunks": len(chunks)})
-                 documents.append({"text": chunk, "metadata": doc_metadata})
-            return documents
+            # 关键：未检测到标记，返回空列表，让调用方退回通用分块逻辑
+            return []
 
         for match in matches:
             json_str = match.group(1).strip()
-            content = match.group(2).strip()
+            content = match.group(2).strip() # content 是单篇论文的完整内容块
             
             try:
                 doc_metadata = json.loads(json_str)
             except json.JSONDecodeError:
                 doc_metadata = {}
 
-            # 将内容分块
-            chunks = self.split_text(content)
+            # === 关键：禁用分块，将整个论文内容视为一个 chunk ===
+            single_chunk = content
             
-            # 为每个块附加元数据
-            for i, chunk in enumerate(chunks):
-                final_metadata = base_metadata.copy()
-                final_metadata.update(doc_metadata) # 包含 original_title, original_url 等信息
-                final_metadata.update({
-                    "chunk_index": i,
-                    "total_chunks": len(chunks)
-                })
-                
-                documents.append({
-                    "text": chunk,
-                    "metadata": final_metadata
-                })
+            final_metadata = base_metadata.copy()
+            final_metadata.update(doc_metadata) # 包含 original_title, original_url 等信息
+            final_metadata.update({
+                "chunk_index": 0, # 单一文档块的索引
+                "total_chunks": 1, # 总共只有 1 个块
+                "is_full_paper_chunk": True # 增加标记，方便后续调试
+            })
+            
+            documents.append({
+                "text": single_chunk,
+                "metadata": final_metadata
+            })
+            # =====================================================================
 
         return documents
+
     
     def process_document(
         self, 
@@ -186,7 +187,6 @@ class DocumentService:
             处理后的文档块列表，每个块包含 text 和 metadata
         """
         try:
-            # --- 关键修改：处理 MD 文件时调用特殊解析器 ---
             base_metadata = {
                 "file_path": file_path,
                 "file_type": file_type,
@@ -194,37 +194,32 @@ class DocumentService:
             if metadata:
                 base_metadata.update(metadata)
 
-            if file_type.lower() == "md":
-                # 对于 Markdown 文件，先提取文本
-                text = self.extract_text_from_txt(file_path)
-                # 使用专门的解析器处理内嵌元数据
-                documents = self._process_markdown_with_metadata(text, base_metadata)
-                return documents
-            
-            # 提取文本 (PDF, TXT)
+            # 提取文本
             text = self.extract_text(file_path, file_type)
             
-            # 分割文本
-            chunks = self.split_text(text)
-            
-            # 为每个块添加元数据
             documents = []
-            for i, chunk in enumerate(chunks):
-                doc_metadata = {
-                    "file_path": file_path,
-                    "file_type": file_type,
-                    "chunk_index": i,
-                    "total_chunks": len(chunks)
-                }
+
+            # --- 1. 尝试结构化解析 (仅对 MD 或 TXT 文件尝试) ---
+            # 如果文件是 MD 或 TXT，尝试使用特殊解析器（它会检查是否有标签）
+            if file_type.lower() in ["md", "txt"]:
+                documents = self._process_markdown_with_metadata(text, base_metadata)
+            
+            # --- 2. 如果结构化解析失败 (即 documents 为空)，则退回到通用分块 ---
+            if not documents:
+                # 分割文本 (使用通用递归分块器)
+                chunks = self.split_text(text)
                 
-                # 合并额外的元数据
-                if metadata:
-                    doc_metadata.update(metadata)
-                
-                documents.append({
-                    "text": chunk,
-                    "metadata": doc_metadata
-                })
+                # 为每个块添加元数据
+                for i, chunk in enumerate(chunks):
+                    doc_metadata = base_metadata.copy()
+                    doc_metadata.update({
+                        "chunk_index": i,
+                        "total_chunks": len(chunks)
+                    })
+                    documents.append({
+                        "text": chunk,
+                        "metadata": doc_metadata
+                    })
             
             return documents
         except Exception as e:

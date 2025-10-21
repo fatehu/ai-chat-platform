@@ -123,9 +123,17 @@ class VectorStoreService:
                 generated_ids = []
                 for i, doc_content in enumerate(documents):
                     metadata = metadatas[i] if metadatas and i < len(metadatas) else {}
-                    filename = metadata.get("filename", "unknown_file")
+                    
+                    # --- 修正后的 ID 生成逻辑 ---
+                    # 优先使用唯一的 original_url 或 original_title
+                    unique_doc_identifier = metadata.get("original_url") or metadata.get("original_title") or metadata.get("filename", "unknown_file")
+                    
+                    # 确保 ID 包含唯一文档源 + 块索引
                     chunk_index = metadata.get("chunk_index", i)
-                    unique_string_for_hash = f"{filename}-{chunk_index}-{doc_content}"
+
+                    # 组合唯一标识符和块索引（内容长度用于二次保险，防止哈希碰撞）
+                    unique_string_for_hash = f"{unique_doc_identifier}-{chunk_index}-{len(doc_content)}" 
+                    
                     doc_id = hashlib.sha256(unique_string_for_hash.encode('utf-8')).hexdigest()
                     generated_ids.append(doc_id)
                 ids = generated_ids
