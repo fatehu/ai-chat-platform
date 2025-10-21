@@ -16,6 +16,13 @@ from datetime import datetime
 import httpx
 from .tool_base import Tool, ToolOutput, ToolCategory
 
+# ====== 邮件标准库导入 ======
+import smtplib
+from email.mime.text import MIMEText
+from email.header import Header
+from email.utils import formataddr
+import ssl
+# ==========================
 
 class FileReaderTool(Tool):
     """文件读取工具 - 读取本地文件内容"""
@@ -798,4 +805,159 @@ class DataStatisticsTool(Tool):
                 success=False,
                 result=None,
                 error=f"统计计算失败: {str(e)}"
+            )
+        
+class EmailSenderTool(Tool):
+    """邮件发送工具 - 使用 SMTP 协议发送电子邮件，带重试机制"""
+    
+    def _get_name(self) -> str:
+        return "send_email"
+    
+    def _get_description(self) -> str:
+        return "发送电子邮件到指定的收件人。需要收件人邮箱、主题和内容。使用此工具进行通知、提醒或信息传递。"
+    
+    def _get_category(self) -> ToolCategory:
+        return ToolCategory.COMMUNICATION
+    
+    def _get_parameters(self) -> Dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "recipient": {
+                    "type": "string",
+                    "description": "收件人的邮箱地址"
+                },
+                "subject": {
+                    "type": "string",
+                    "description": "邮件主题"
+                },
+                "body": {
+                    "type": "string",
+                    "description": "邮件正文（文本格式）"
+                }
+            },
+            "required": ["recipient", "subject", "body"]
+        }
+    
+    async def _execute(self, recipient: str, subject: str, body: str, max_attempts: int = 3) -> ToolOutput:
+        """执行邮件发送，带重试机制"""
+        try:
+            sender_address = os.getenv("EMAIL_SENDER_ADDRESS")
+            sender_password = os.getenv("EMAIL_SENDER_PASSWORD")
+            smtp_server = os.getenv("SMTP_SERVER")
+            smtp_port = int(os.getenv("SMTP_PORT", 465))
+            
+            if not all([sender_address, sender_password, smtp_server]):
+                return ToolOutput(
+                    success=False,
+                    result=None,
+                    error="邮件配置缺失：请设置 EMAIL_SENDER_ADDRESS, EMAIL_SENDER_PASSWORD, SMTP_SERVER"
+                )
+
+            for attempt in range(1, max_attempts + 1):
+                print("=" * 60)
+                print(f"尝试 {attempt}/{max_attempts}")
+                print(f"SMTP 配置: {smtp_server}:{smtp_port}")
+                print(f"发件人: {sender_address}")
+                print(f"收件人: {recipient}")
+                print("=" * 60)
+                print("尝试连接并发送...（调试模式已启用）")
+
+                try:
+                    # SSL上下文：强制TLS 1.2
+                    context = ssl.create_default_context()
+                    context.minimum_version = ssl.TLSVersion.TLSv1_2
+                    
+                    # 构造邮件内容
+                    message = MIMEText(body, 'plain', 'utf-8')
+                    message['From'] = formataddr(("AI Agent", sender_address))
+                    message['To'] = recipient
+                    message['Subject'] = Header(subject, 'utf-8')
+                    
+                    # 使用SMTP_SSL连接，带超时
+                    smtp_server_instance = smtplib.SMTP_SSL(smtp_server, smtp_port, context=context, timeout=30)
+                    smtp_server_instance.set_debuglevel(1)  # 启用调试日志
+                    print("✅ SSL 连接成功建立。")
+                    
+                    # 登录
+                    smtp_server_instance.login(sender_address, sender_password)
+                    print("✅ 登录认证成功。")
+                    
+                    # 发送邮件
+                    smtp_server_instance.sendmail(sender_address, [recipient], message.as_string())
+                    print(f"✅ 邮件发送成功到 {recipient}（使用sendmail）。")
+                    
+                    # 尝试优雅关闭连接
+                    try:
+                        smtp_server_instance.quit()
+                    except smtplib.SMTPResponseException as quit_e:
+                        print(f"⚠️ QUIT 命令异常: {quit_e}，但邮件已发送成功，可忽略。")
+                    
+                    return ToolOutput(
+                        success=True,
+                        result=f"邮件已成功发送到 {recipient}",
+                        metadata={
+                            "recipient": recipient,
+                            "subject": subject,
+                            "sender": sender_address,
+                            "attempts": attempt
+                        }
+                    )
+
+                except smtplib.SMTPAuthenticationError:
+                    print("❌ 错误: 登录认证失败。请检查授权码（非QQ密码）和邮箱地址。确保SMTP服务已开启。")
+                    if attempt == max_attempts:
+                        return ToolOutput(
+                            success=False,
+                            result=None,
+                            error="发送邮件失败: 授权码（非QQ密码）或邮箱地址错误。请检查 .env 配置。"
+                        )
+                except smtplib.SMTPConnectError:
+                    print(f"❌ 错误: 无法连接到 {smtp_server}:{smtp_port}。检查端口、网络或防火墙（允许465端口）。")
+                    if attempt == max_attempts:
+                        return ToolOutput(
+                            success=False,
+                            result=None,
+                            error=f"发送邮件失败: 无法连接到 {smtp_server}:{smtp_port}。检查网络、端口或防火墙（允许465出站）。"
+                        )
+                except smtplib.SMTPServerDisconnected:
+                    print("❌ 错误: 服务器意外断开。可能为网络问题或QQ反垃圾限制。")
+                    if attempt == max_attempts:
+                        return ToolOutput(
+                            success=False,
+                            result=None,
+                            error="发送邮件失败: 服务器意外断开连接。这可能是最底层网络阻断或QQ反垃圾策略。"
+                        )
+                except ssl.SSLError as e:
+                    print(f"❌ 错误: SSL 握手失败: {e}。尝试端口587 + STARTTLS。")
+                    if attempt == max_attempts:
+                        return ToolOutput(
+                            success=False,
+                            result=None,
+                            error=f"发送邮件失败: SSL 握手失败: {e}。建议检查配置或尝试端口587 + STARTTLS。"
+                        )
+                except Exception as e:
+                    print(f"❌ 发生未知错误: {e}")
+                    if attempt == max_attempts:
+                        return ToolOutput(
+                            success=False,
+                            result=None,
+                            error=f"发送邮件失败: 未知错误: {str(e)}。请检查代码或网络环境。"
+                        )
+                
+                if attempt < max_attempts:
+                    print(f"⚠️ 尝试失败，将在3秒后重试...")
+                    time.sleep(3)
+
+            return ToolOutput(
+                success=False,
+                result=None,
+                error=f"发送邮件失败: 达到最大重试次数 {max_attempts}。"
+            )
+
+        except ValueError:
+            return ToolOutput(
+                success=False,
+                result=None,
+                error="配置错误: SMTP_PORT 配置值必须是整数。"
             )

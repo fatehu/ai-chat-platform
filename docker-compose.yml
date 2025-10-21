@@ -74,6 +74,11 @@ services:
 
       # 外部api
       - SERPER_API_KEY=${SERPER_API_KEY}
+
+      - EMAIL_SENDER_ADDRESS=${EMAIL_SENDER_ADDRESS}      # 发件人邮箱地址
+      - EMAIL_SENDER_PASSWORD=${EMAIL_SENDER_PASSWORD}     # 邮箱授权码/应用专用密码
+      - SMTP_SERVER=${SMTP_SERVER}                    # SMTP 服务器地址 (如 smtp.qq.com)
+      - SMTP_PORT=${SMTP_PORT}                                # SMTP 端口 (通常是 587 或 465)
     volumes:
       - ./app:/app/app
       - ./agent_tmp:/tmp
